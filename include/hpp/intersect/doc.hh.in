@@ -1,0 +1,34 @@
+// Copyright (C) 2016 CNRS-LAAS
+// Author: Anna Seppala.
+//
+// This file is part of the hpp-intersect.
+//
+// hpp-intersect is free software: you can redistribute
+// it and/or modify it under the terms of the GNU Lesser General
+// Public License as published by the Free Software Foundation, either
+// version 3 of the License, or (at your option) any later version.
+//
+// hpp-intersect is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public
+// License along with hpp-intersect.  If not, see
+// <http://www.gnu.org/licenses/>.
+
+/// \mainpage
+///
+/// \section hpp_intersect_intro Introduction
+///
+/// This package implements a library that computes the intersection of fcl collision objects. 
+///
+/// hpp-intersect utilises triangulated meshes created from objects of type 
+/// fcl::collisionObject as implemented in \htmlonly<a class="el" href="@HPP_FCL_DOXYGENDOCDIR@/index.html">hpp-fcl</a>\endhtmlonly. Please refer to its package documentation for details.
+///
+/// 
+/// 
+/// 
+/// 
+/// 
+///
