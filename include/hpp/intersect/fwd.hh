@@ -20,6 +20,9 @@
 #ifndef HPP_INTERSECT_FWD_HH
 #define HPP_INTERSECT_FWD_HH
 
+#include <vector>
+#include <map>
+#include <boost/smart_ptr.hpp>
 #include <hpp/fcl/fwd.hh>
 #include <hpp/fcl/BVH/BVH_model.h>
 #include <hpp/fcl/math/vec_3f.h>
@@ -29,6 +32,9 @@ namespace hpp {
           typedef fcl::BVHModel<fcl::OBBRSS> BVHModelOB;
           typedef boost::shared_ptr<BVHModelOB> BVHModelOB_Ptr_t;
           typedef boost::shared_ptr<const BVHModelOB> BVHModelOBConst_Ptr_t;
+          typedef std::pair <fcl::CollisionObjectPtr_t, fcl::CollisionObjectPtr_t>
+              CollisionPair_t;
+
       } // namespace intersect
 } // namespace hpp
 

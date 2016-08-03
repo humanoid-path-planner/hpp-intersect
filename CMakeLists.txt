@@ -65,7 +65,7 @@ ADD_REQUIRED_DEPENDENCY("hpp-fcl >= 0.2.9")
 ## Add dependency toward hpp-intersect library in pkg-config file.
 PKG_CONFIG_APPEND_LIBS("hpp-intersect")
 
-# ADD_SUBDIRECTORY(src)
+ADD_SUBDIRECTORY(src)
 # ADD_SUBDIRECTORY(tests)
 
 CONFIG_FILES (include/hpp/intersect/doc.hh)
