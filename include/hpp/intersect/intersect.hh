@@ -28,7 +28,7 @@ namespace hpp {
     
     /// \addtogroup intersect
     /// \{
-        std::vector<fcl::Vec3f> getIntersection (const fcl::CollisionObjectPtr_t& rom,
+        std::vector<fcl::Vec3f> getIntersectionPoints (const fcl::CollisionObjectPtr_t& rom,
                const fcl::CollisionObjectPtr_t& affordance);
     /// \}
     

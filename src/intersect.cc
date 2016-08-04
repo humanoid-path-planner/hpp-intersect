@@ -23,6 +23,55 @@
 namespace hpp {
     namespace intersect {
 
+        /// \brief get major and minor radius of ellipse or raduíus of sphere from given
+        /// vector of parameters of the conic function. function modifies parameters centroid
+        /// and tau to give centroid of shape and (for ellipses) the rotation angle
+        /// within the plane of the shape in radians.
+        std::vector<double> getRadius (const Eigen::VectorXd& params,
+                Eigen::Vector2d& centroid, double& tau)
+        {
+          // if number of parameters == 5 -->assume it's a circle ?
+          // if number == 6 --> ellipse
+          bool ellipse = true;
+          if (params.size () < 6) {
+              if (params.size () < 5) {
+                  // TODO: raise error
+                  std::cout << "Wrong number of parameters in conic function!!" << std::endl;
+              }
+              ellipse = false;
+          }
+          
+          std::vector<double> radii;
+          if (ellipse) {
+              double A(params(0)), B(params(1)), C(params(2)), D(params(3)),
+                     E(params(4)), F(params(5));
+
+              Eigen::Matrix3d M0;
+              M0 << F, D/2.0, E/2.0, D/2.0, A, B/2.0, E/2.0, B/2.0, C;
+              Eigen::Matrix2d M;
+              M << A, B/2.0, B/2.0, C;
+        
+               Eigen::EigenSolver<Eigen::Matrix2d> es(M);
+               Eigen::EigenSolver<Eigen::Matrix2d>::EigenvalueType eval = es.eigenvalues ();
+               Eigen::Vector2d lambda;
+
+               // make sure eigenvalues are in order for the rest of the computations
+               if (fabs(eval(0).real () - A) > fabs(eval(0).real () - C)) {
+                  lambda << eval(1).real (), eval(0).real ();   
+               } else {
+                  lambda << eval(0).real (), eval(1).real ();
+               }
+               radii.push_back (sqrt (-M0.determinant ()/(M.determinant () * lambda(0))));
+               radii.push_back (sqrt (-M0.determinant ()/(M.determinant () * lambda(1))));
+               centroid << (B*E - 2*C*D)/(4*A*C - B*B), (B*D - 2*A*E)/(4*A*C - B*B);
+               tau = (M_PI/2.0 - atan((A-C)/B))/2.0;
+          } else // circle!
+          {
+            // TODO: Add needed functionality for circles
+          }
+          return radii;
+        }
+
         /// \brief fit ellipse to a set of points. 2D implementation.
         /// Direct ellipse fit, proposed in article "Direct Least Squares Fitting of Ellipses"
         /// by A. W. Fitzgibbon, M. Pilu, R. B. Fisher in IEEE Trans. PAMI, Vol. 21, pages 476-480 (1999)
@@ -76,7 +125,7 @@ namespace hpp {
           
           Eigen::MatrixXd A0 (3,1);
           A0.setZero ();
-          // TODO: A0 shoul always be of size 3x1 --> fix
+          // TODO: A0 should always be of size 3x1 --> fix
           for (unsigned int i = 0; i < cond.size (); ++i) {
               if (cond(i) > 0.0) {
                   A0.resize (3,i+1);
@@ -104,7 +153,7 @@ namespace hpp {
 
         }
 
-        std::vector<fcl::Vec3f> getIntersection (const fcl::CollisionObjectPtr_t& rom,
+        std::vector<fcl::Vec3f> getIntersectionPoints (const fcl::CollisionObjectPtr_t& rom,
                const fcl::CollisionObjectPtr_t& affordance)
         {
             CollisionPair_t col = CollisionPair_t (affordance, rom);
@@ -132,22 +181,14 @@ namespace hpp {
             for (unsigned int i = 0; i < res.numContacts (); ++i) {
                 intersectPoints.push_back(res.getContact (i).pos);
             }
+            
             //debug
             for (unsigned int i = 0; i < intersectPoints.size (); ++i) {
               std::cout << intersectPoints[i] << std::endl;
             }
-
-            Eigen::VectorXd ellipse = directEllipse(intersectPoints);
-            if (ellipse.rows () != 6 || ellipse.cols () != 1) {
-              std::cout << "ERROR: wrong number of ellipse coefficients!" << std::endl;
-            }
-            std::cout << "Ellipse function: " << "(" << ellipse(0) << ")*x^2 + (" << ellipse(1) 
-                << ")*x*y + (" << ellipse(2) << ")*y^2 + (" << ellipse(3) << ")*x+ ("
-                << ellipse(4) << ")*y + (" << ellipse(5) << ")" << std::endl;
-
-
             return intersectPoints;
         }
+
 
 
 
