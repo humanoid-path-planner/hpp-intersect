@@ -36,7 +36,9 @@ namespace hpp {
           if (params.size () < 6) {
               if (params.size () < 5) {
                   // TODO: raise error
-                  std::cout << "Wrong number of parameters in conic function!!" << std::endl;
+                  std::ostringstream oss
+              ("getRadius: Wrong number of parameters in conic function!!.");
+            throw std::runtime_error (oss.str ());
               }
               ellipse = false;
           }
@@ -120,11 +122,13 @@ namespace hpp {
           //eval.diagonal () = evalCplx.real ();
 
           Eigen::VectorXd cond (3);
+          // The condition has the form 4xz - y^2 > 0 (infinite elliptic cone) for all
+          // three eigen vectors. If none of the eigen vectors fulfils the inequality,
+          // the direct ellipse method fails.
           cond = (4*evec.block<1,3>(0,0).array () * evec.block<1,3>(2,0).array () -
               evec.block<1,3>(1,0).array ().square ()).transpose ();
           
-          Eigen::MatrixXd A0 (3,1);
-          A0.setZero ();
+          Eigen::MatrixXd A0 (0,0);
           // TODO: A0 should always be of size 3x1 --> fix
           for (unsigned int i = 0; i < cond.size (); ++i) {
               if (cond(i) > 0.0) {
@@ -132,8 +136,10 @@ namespace hpp {
                   A0.block(0,i,3,1) = evec.block<3,1>(0,i);
               }
           }
-          if (A0.isZero(10e-4)) {
-            std::cout << "ERROR: no fitting ellipse found." << std::endl;
+          if (A0.size () < 3) {
+              std::ostringstream oss
+              ("directEllipse: Could not create ellipse approximation. Maybe try circle instead?");
+            throw std::runtime_error (oss.str ());
           }
           // A1.rows () + T.rows () should always be equal to 6!!
           Eigen::MatrixXd A(A0.rows () + T.rows (), A0.cols ());
@@ -145,12 +151,75 @@ namespace hpp {
           double A5 = A(5,0) + A(0,0) * centroid(0)*centroid(0) + A(2,0) * centroid(1)*centroid(1) +
               A(1,0) * centroid(0) * centroid(1) - A(3,0) * centroid(0) - A(4,0) * centroid(1);
 
-          A(3,0) = A3/2.0;  A(4,0) = A4/2.0;  A(5,0) = A5;
-          A(1,0) = A(1,0)/2.0;
+          A(3,0) = A3;  A(4,0) = A4;  A(5,0) = A5;
+          //A(3,0) = A3/2.0;  A(4,0) = A4/2.0;  A(5,0) = A5;
+          //A(1,0) = A(1,0)/2.0;
           A = A/A.norm ();
 
           return A.block<6,1>(0,0);
 
+        }
+
+        /// \brief return normal of plane fitted to set of points.
+        /// Also modifies the vector of points by replacing the points with those
+        /// projected onto the fitted plane.
+        Eigen::VectorXd projectToPlane (std::vector<fcl::Vec3f> points)
+        {
+          if (points.size () < 3) {
+   					std::ostringstream oss
+              ("projectToPlane: Too few input points to create plane.");
+            throw std::runtime_error (oss.str ());
+          }
+
+          const size_t nPoints = points.size ();
+          Eigen::MatrixXd A (nPoints,3);
+          Eigen::VectorXd b (nPoints);
+          // TODO: optimise
+          for (unsigned int i = 0; i < nPoints; ++i) {
+              A (i,0) = points[i][0];
+              A (i,1) = points[i][1];
+              A (i,2) = 1.0;
+              b (i) = points[i][2];
+          }
+          // TODO: which decomposition to choose?
+          Eigen::VectorXd params (A.fullPivLu().solve(b));
+
+          if (params.size () < 3) {
+            std::ostringstream oss
+              ("projectToPlane: Wrong number of parameters for plane function!");
+            throw std::runtime_error (oss.str ());
+          }
+          Eigen::Vector3d normal (params(0), params(1), params(2));
+          normal.normalize ();
+          // get origin of plane from z = C(0)*x + C(1)*y + C(2);
+          Eigen::Vector3d orig(0.0, 0.0, params(2));
+          Eigen::Matrix3d origin;
+          origin.setZero ();
+          origin.diagonal () = orig;
+          Eigen::MatrixXd XYZ (nPoints,3);
+          XYZ << A.block(0,0,nPoints,2), b;
+
+          Eigen::MatrixXd distance (nPoints,3);
+
+          distance = XYZ - (Eigen::MatrixXd::Ones (nPoints,3)*origin);//orig.array ().transpose ();
+
+          // DEBUG:
+          // std::cout << "XYZ: "<< XYZ << std::endl << ", distance :" << distance << std::endl;
+
+          // scalar distance from point to plane along the normal for all points in vector
+          Eigen::VectorXd scalarDist (nPoints);
+          scalarDist = distance.block(0,0,nPoints,1)*normal(0) + distance.block(0,1,nPoints,1)*normal(1) +
+              distance.block(0,2,nPoints,1)*normal(2);
+  
+          // TODO: optimise
+          for (unsigned int i = 0; i > points.size (); ++i) {
+            Eigen::Vector3d projectecPoint = XYZ.block(i,0, 1,3).transpose () - scalarDist(i)*normal;
+            points[i][0] = projectecPoint (0);
+            points[i][1] = projectecPoint (1);
+            points[i][2] = projectecPoint (2);
+          }
+
+          return params;
         }
 
         std::vector<fcl::Vec3f> getIntersectionPoints (const fcl::CollisionObjectPtr_t& rom,
@@ -162,12 +231,11 @@ namespace hpp {
             req.enable_contact = true;
             fcl::CollisionResult res;
             std::vector<fcl::Vec3f> intersectPoints; intersectPoints.clear ();
-            std::size_t collision = fcl::collide (col.first.get (),
-                    col.second.get (), req, res);
+            // std::size_t collision TODO: should the return value of collision (...) be stored?
+            fcl::collide (col.first.get (), col.second.get (), req, res);
           
-            std::cout << "rom trafo: " << rom->getRotation() << rom->getTranslation() << std::endl;
-            std::cout << "aff trafo: " << affordance->getRotation() << affordance->getTranslation() << std::endl;
-
+            //std::cout << "rom trafo: " << rom->getRotation() << rom->getTranslation() << std::endl;
+            //std::cout << "aff trafo: " << affordance->getRotation() << affordance->getTranslation() << std::endl;
 
             if (!res.isCollision ()) {
               // should not happen

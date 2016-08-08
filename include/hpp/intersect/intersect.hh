@@ -28,8 +28,16 @@ namespace hpp {
     
     /// \addtogroup intersect
     /// \{
+        std::vector<double> getRadius (const Eigen::VectorXd& params,
+                Eigen::Vector2d& centroid, double& tau);
+
+        Eigen::VectorXd directEllipse(const std::vector<fcl::Vec3f>& points);
+
+        Eigen::VectorXd projectToPlane (std::vector<fcl::Vec3f> points);
+
         std::vector<fcl::Vec3f> getIntersectionPoints (const fcl::CollisionObjectPtr_t& rom,
                const fcl::CollisionObjectPtr_t& affordance);
+
     /// \}
     
     } // namespace intersect
