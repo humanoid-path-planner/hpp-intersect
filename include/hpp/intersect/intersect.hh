@@ -32,6 +32,7 @@ namespace hpp {
                 Eigen::Vector2d& centroid, double& tau);
 
         Eigen::VectorXd directEllipse(const std::vector<fcl::Vec3f>& points);
+        Eigen::VectorXd directCircle (const std::vector<fcl::Vec3f>& points);
 
         Eigen::VectorXd projectToPlane (std::vector<fcl::Vec3f> points);
 

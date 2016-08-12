@@ -34,12 +34,12 @@ namespace hpp {
           // if number == 6 --> ellipse
           bool ellipse = true;
           if (params.size () < 6) {
-              if (params.size () < 5) {
-                  // TODO: raise error
-                  std::ostringstream oss
-              ("getRadius: Wrong number of parameters in conic function!!.");
-            throw std::runtime_error (oss.str ());
-              }
+              std::ostringstream oss
+                ("getRadius: Wrong number of parameters in conic function!!.");
+              throw std::runtime_error (oss.str ());
+          // if the coefficient B of eq. Ax^2 + Bxy + Cy^2 + Dx + Ey + F = 0 is zero,
+          // the function describes a circle
+          } else if (params(1) == 0.0) {
               ellipse = false;
           }
           
@@ -69,7 +69,9 @@ namespace hpp {
                tau = (M_PI/2.0 - atan((A-C)/B))/2.0;
           } else // circle!
           {
-            // TODO: Add needed functionality for circles
+           centroid << params(3)/(-2.0), params(4)/(-2.0);
+           radii.push_back (sqrt (centroid(0)*centroid(0) + centroid(1)*centroid(1) - params(5)));
+           tau = 0.0; 
           }
           return radii;
         }
@@ -91,7 +93,7 @@ namespace hpp {
               XY (i,1) = points[i][1];
           }
          
-          Eigen::VectorXd centroid (2);
+          Eigen::Vector2d centroid;
           centroid << XY.block(0,0, nPoints,1).mean (),
                   XY.block(0,1, nPoints, 1).mean ();
 
@@ -115,11 +117,8 @@ namespace hpp {
 
           Eigen::EigenSolver<Eigen::Matrix3d> es(M);
           Eigen::EigenSolver<Eigen::Matrix3d>::EigenvectorsType evecCplx = es.eigenvectors ();
-          //Eigen::EigenSolver<Eigen::Matrix3d>::EigenvalueType evalCplx = es.eigenvalues ();
 
           Eigen::Matrix3d evec = evecCplx.real ();
-          //Eigen::Matrix3d eval(Eigen::Matrix3d::Zero());
-          //eval.diagonal () = evalCplx.real ();
 
           Eigen::VectorXd cond (3);
           // The condition has the form 4xz - y^2 > 0 (infinite elliptic cone) for all
@@ -157,6 +156,34 @@ namespace hpp {
           A = A/A.norm ();
 
           return A.block<6,1>(0,0);
+
+        }
+
+        Eigen::VectorXd directCircle (const std::vector<fcl::Vec3f>& points)
+        {
+          const size_t nPoints = points.size ();
+          // only consider x and y coordinates: supposing points are in a plane
+          Eigen::MatrixXd XY(nPoints,2);
+          // TODO: optimise
+          for (unsigned int i = 0; i < nPoints; ++i) {
+              XY (i,0) = points[i][0];
+              XY (i,1) = points[i][1];
+          }
+         
+          Eigen::Vector2d centroid;
+          centroid << XY.block(0,0, nPoints,1).mean (),
+                  XY.block(0,1, nPoints, 1).mean ();
+
+          double radius = (((XY.block(0,0, nPoints, 1).array () - centroid(0)).square () + 
+                  (XY.block(0,1, nPoints, 1).array () -centroid(1)).square ()).sqrt ()).mean ();
+
+          std::cout << "circle radius: " << radius << std::endl;
+
+          Eigen::VectorXd params (6);
+          params << 1.0, 0.0, 1.0, -2*centroid(0), -2*centroid(1), centroid(0)*centroid(0) +
+              centroid(1)*centroid(1) - radius*radius;
+
+          return params;
 
         }
 
