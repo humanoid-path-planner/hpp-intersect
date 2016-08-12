@@ -19,9 +19,16 @@
 //
 #include <hpp/intersect/intersect.hh>
 #include <hpp/fcl/collision.h>
+#include <limits>
 
 namespace hpp {
     namespace intersect {
+
+
+        struct TrianglePoints
+        {   
+            fcl::Vec3f p1, p2, p3; 
+        };
 
         /// \brief get major and minor radius of ellipse or raduíus of sphere from given
         /// vector of parameters of the conic function. function modifies parameters centroid
@@ -249,6 +256,134 @@ namespace hpp {
           return params;
         }
 
+        BVHModelOBConst_Ptr_t GetModel (const fcl::CollisionObjectConstPtr_t& object)
+        {   
+            assert (object->collisionGeometry ()->getNodeType () == fcl::BV_OBBRSS);
+            const BVHModelOBConst_Ptr_t model = boost::static_pointer_cast<const BVHModelOB>
+                                                (object->collisionGeometry ());
+            assert (model->getModelType () == fcl::BVH_MODEL_TRIANGLES);
+            return model;
+        }
+
+        // A Fast Triangle-Triangle Intersection Test by Tomas Möller
+        std::vector<fcl::Vec3f> TriangleIntersection (const TrianglePoints& rom, const TrianglePoints& aff)
+        {
+         //plane equation C(0)x + C(1)y + C(2)z + C(3) = 0
+         Eigen::VectorXd romC(4);
+         Eigen::VectorXd affC(4);
+         std::vector<fcl::Vec3f> res;
+
+         romC.block(0,0,3,1) << (rom.p2 - rom.p1).cross (rom.p3 - rom.p1);
+         romC[3] = (-romC.block(0,0,3,1)).dot (rom.p1);
+
+         // signed distances from the vertices of aff to the plane of rom
+         // (multiplied by a constant romC.block(0,0,3,1) dot romC.block(0,0,3,1))
+         Eigen::Vector3d a2r (romC.block(0,0,3,1).dot(aff.p1) + romC[3],
+                 romC.block(0,0,3,1).dot(aff.p2) + romC[3],
+                 romC.block(0,0,3,1).dot(aff.p3) + romC[3]);
+         // if all distances have the same sign and are not zero, no overlap exists
+         if ((a2r[0] < 0 && a2r[1] < 0 && a2r[2] < 0) || (a2r[0] > 0 && a2r[1] > 0 && a2r[2] > 0)) {
+            res.clear ();
+            return res;// return empty vector;
+         }
+
+         //same procedure needed for affC
+         affC.block(0,0,3,1) << (aff.p2 - aff.p1).cross (aff.p3 - aff.p1);
+         affC[3] = (-affC.block(0,0,3,1)).dot (aff.p1);
+
+         Eigen::Vector3d r2a (affC.block(0,0,3,1).dot(rom.p1) + affC[3],
+                 affC.block(0,0,3,1).dot(rom.p2) + affC[3],
+                 affC.block(0,0,3,1).dot(rom.p3) + affC[3]);
+         if ((r2a[0] < 0 && r2a[1] < 0 && r2a[2] < 0) || (r2a[0] > 0 && r2a[1] > 0 && r2a[2] > 0)) {
+            res.clear ();
+            return res;
+         }
+
+        // if we get this far, triangles intersect or are coplanar
+        if (r2f.isZero (1e-4)) {
+            // deal with coplanar triangles and return
+        }
+        
+        // The intersection of aff and rom planes is a line L = p +tD,
+        // D = affC.block(0,0,3,1).cross(romC.block(0,0,3,1)) and p is a point on the line
+        
+
+        }
+
+        // custom funciton to get intersection points: not optimal time. Only to be used until
+        // fcl::collision points start working
+        std::vector<fcl::Vec3f> getIntersectionPointsCustom (const fcl::CollisionObjectPtr_t& rom,
+               const fcl::CollisionObjectPtr_t& affordance)
+        {
+          BVHModelOBConst_Ptr_t romModel (GetModel (rom));
+          BVHModelOBConst_Ptr_t affModel (GetModel (affordance));
+//          std::vector<fcl::Vec3f> affVertices(affModel->vertices);
+//          std::vector<fcl::Triangle> affTriangles(affModel->triangles);
+//          std::vector<std::size_t> triIndices(affModel->);
+          
+          TrianglePoints tri;
+          std::vector<TrianglePoints> affTris; // triangles in world frame
+          std::vector<TrianglePoints> romTris;
+          
+          double maxX, maxY, maxZ = std::numeric_limits<double>::min();
+          double minX, minY, minZ = std::numeric_limits<double>::max();;
+          for (unsigned int k = 0; k < affModel->num_tris; ++k) {
+              fcl::Triangle fcltri = affModel->tri_indices[k];
+              tri.p1 = affordance->getRotation() * affModel->vertices[fcltri[0]] + affordance->getTranslation();
+              tri.p2 = affordance->getRotation() * affModel->vertices[fcltri[1]] + affordance->getTranslation();
+              tri.p3 = affordance->getRotation() * affModel->vertices[fcltri[2]] + affordance->getTranslation();
+              if (maxX < std::max (std::max (tri.p1[0], tri.p2[0]), tri.p3[0])) {
+                  maxX = std::max (std::max (tri.p1[0], tri.p2[0]), tri.p3[0]);
+              }
+              if (maxY < std::max (std::max (tri.p1[1], tri.p2[1]), tri.p3[1])) {
+                  maxY = std::max (std::max (tri.p1[1], tri.p2[1]), tri.p3[1]);
+              }
+              if (maxZ < std::max (std::max (tri.p1[2], tri.p2[2]), tri.p3[2])) {
+                  maxZ = std::max (std::max (tri.p1[2], tri.p2[2]), tri.p3[2]);
+              }
+              if (minX > std::min (std::min (tri.p1[0], tri.p2[0]), tri.p3[0])) {
+                  minX = std::min (std::min (tri.p1[0], tri.p2[0]), tri.p3[0]);
+              }
+              if (minY > std::min (std::min (tri.p1[1], tri.p2[1]), tri.p3[1])) {
+                  minY = std::min (std::min (tri.p1[1], tri.p2[1]), tri.p3[1]);
+              }
+              if (minZ > std::min (std::min (tri.p1[2], tri.p2[2]), tri.p3[2])) {
+                  minZ = std::min (std::min (tri.p1[2], tri.p2[2]), tri.p3[2]);
+              }
+
+
+              affTris.push_back (tri);
+          }
+          for (unsigned int k = 0; k < romModel->num_tris; ++k) {
+              fcl::Triangle fcltri = romModel->tri_indices[k];
+              tri.p1 = rom->getRotation() * romModel->vertices[fcltri[0]] + rom->getTranslation();
+              tri.p2 = rom->getRotation() * romModel->vertices[fcltri[1]] + rom->getTranslation();
+              tri.p3 = rom->getRotation() * romModel->vertices[fcltri[2]] + rom->getTranslation();
+              if ((maxX < std::min (std::min (tri.p1[0], tri.p2[0]), tri.p3[0])) ||
+                 (minX > std::max (std::max (tri.p1[0], tri.p2[0]), tri.p3[0])) ||
+                 (maxY < std::min (std::min (tri.p1[1], tri.p2[1]), tri.p3[1])) ||
+                 (minY > std::max (std::max (tri.p1[1], tri.p2[1]), tri.p3[1])) ||
+                 (maxZ < std::min (std::min (tri.p1[2], tri.p2[2]), tri.p3[2])) ||
+                 (minZ > std::max (std::max (tri.p1[2], tri.p2[2]), tri.p3[2]))) {
+                  continue;
+              }
+
+              romTris.push_back (tri);
+          }
+          std::cout << "tris in orig rom: " << romModel->num_tris << std::endl <<
+              "tris in reduced rom: " << romTris.size () << std::endl;
+
+          for (unsigned int afftri = 0; afftri < affTris.size (); ++afftri) {
+              for (unsigned int romtri = 0; romtri < romTris.size(); ++romtri) {
+                  // check whether affTris[afftri] and romTris[romTri] intersect.
+                  // If yes, find intersection line
+              
+              }
+          
+          }
+          return getIntersectionPoints (rom, affordance);
+        }
+
         std::vector<fcl::Vec3f> getIntersectionPoints (const fcl::CollisionObjectPtr_t& rom,
                const fcl::CollisionObjectPtr_t& affordance)
         {
@@ -278,9 +413,9 @@ namespace hpp {
             }
             
             //debug
-            for (unsigned int i = 0; i < intersectPoints.size (); ++i) {
-              std::cout << intersectPoints[i] << std::endl;
-            }
+            //for (unsigned int i = 0; i < intersectPoints.size (); ++i) {
+            //  std::cout << intersectPoints[i] << std::endl;
+            //}
             return intersectPoints;
         }
 

@@ -36,6 +36,9 @@ namespace hpp {
 
         Eigen::VectorXd projectToPlane (std::vector<fcl::Vec3f> points);
 
+        std::vector<fcl::Vec3f> getIntersectionPointsCustom (const fcl::CollisionObjectPtr_t& rom,
+               const fcl::CollisionObjectPtr_t& affordance);
+
         std::vector<fcl::Vec3f> getIntersectionPoints (const fcl::CollisionObjectPtr_t& rom,
                const fcl::CollisionObjectPtr_t& affordance);
 
