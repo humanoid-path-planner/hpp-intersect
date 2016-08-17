@@ -20,6 +20,7 @@
 #include <hpp/intersect/intersect.hh>
 #include <hpp/fcl/collision.h>
 #include <limits>
+#include <boost/math/special_functions/sign.hpp>
 
 namespace hpp {
     namespace intersect {
@@ -266,21 +267,27 @@ namespace hpp {
         }
 
         // A Fast Triangle-Triangle Intersection Test by Tomas Möller
-        std::vector<fcl::Vec3f> TriangleIntersection (const TrianglePoints& rom, const TrianglePoints& aff)
+        std::vector<fcl::Vec3f> TriangleIntersection (const TrianglePoints& rom, const TrianglePoints& aff,
+                const unsigned int refine=0)
         {
-         //plane equation C(0)x + C(1)y + C(2)z + C(3) = 0
-         Eigen::VectorXd romC(4);
-         Eigen::VectorXd affC(4);
+         //plane equation C(0)x + C(1)y + C(2)z + C3 = 0
+         Eigen::Vector3d romC;
+         double romC3;
+         Eigen::Vector3d affC;
+         double affC3;
          std::vector<fcl::Vec3f> res;
+         double X (0.0);
+         double Y (0.0);
+         double Z (0.0);
 
-         romC.block(0,0,3,1) << (rom.p2 - rom.p1).cross (rom.p3 - rom.p1);
-         romC[3] = (-romC.block(0,0,3,1)).dot (rom.p1);
+         romC << (rom.p2 - rom.p1).cross (rom.p3 - rom.p1);
+         romC3 = (-romC).dot (rom.p1);
 
          // signed distances from the vertices of aff to the plane of rom
          // (multiplied by a constant romC.block(0,0,3,1) dot romC.block(0,0,3,1))
-         Eigen::Vector3d a2r (romC.block(0,0,3,1).dot(aff.p1) + romC[3],
-                 romC.block(0,0,3,1).dot(aff.p2) + romC[3],
-                 romC.block(0,0,3,1).dot(aff.p3) + romC[3]);
+         Eigen::Vector3d a2r (romC.dot(aff.p1) + romC3,
+                 romC.dot(aff.p2) + romC3,
+                 romC.dot(aff.p3) + romC3);
          // if all distances have the same sign and are not zero, no overlap exists
          if ((a2r[0] < 0 && a2r[1] < 0 && a2r[2] < 0) || (a2r[0] > 0 && a2r[1] > 0 && a2r[2] > 0)) {
             res.clear ();
@@ -288,39 +295,139 @@ namespace hpp {
          }
 
          //same procedure needed for affC
-         affC.block(0,0,3,1) << (aff.p2 - aff.p1).cross (aff.p3 - aff.p1);
-         affC[3] = (-affC.block(0,0,3,1)).dot (aff.p1);
+         affC << (aff.p2 - aff.p1).cross (aff.p3 - aff.p1);
+         affC3 = (-affC).dot (aff.p1);
 
-         Eigen::Vector3d r2a (affC.block(0,0,3,1).dot(rom.p1) + affC[3],
-                 affC.block(0,0,3,1).dot(rom.p2) + affC[3],
-                 affC.block(0,0,3,1).dot(rom.p3) + affC[3]);
+         Eigen::Vector3d r2a (affC.dot(rom.p1) + affC3,
+                 affC.dot(rom.p2) + affC3,
+                 affC.dot(rom.p3) + affC3);
          if ((r2a[0] < 0 && r2a[1] < 0 && r2a[2] < 0) || (r2a[0] > 0 && r2a[1] > 0 && r2a[2] > 0)) {
             res.clear ();
             return res;
          }
 
         // if we get this far, triangles intersect or are coplanar
-        if (r2f.isZero (1e-4)) {
-            // deal with coplanar triangles and return
+        if (r2a.isZero (1e-4)) {
+            // deal with coplanar triangles and return?
         }
-        
         // The intersection of aff and rom planes is a line L = p +tD,
-        // D = affC.block(0,0,3,1).cross(romC.block(0,0,3,1)) and p is a point on the line
+        // D = affC.cross(romC) and p is a point on the line
+        fcl::Vec3f D = affC.cross(romC);
+        D.normalize ();
+        // if the intersection line is horizontal (either of the triangles
+        // has a normal with only a Z component), the Z component cannot be arbitrarily
+        // set to 0 to find a point on the line.
+        if (D[2] == 0.0) {
+           if (affC.block<2,1>(0,0).isZero(1e-6)) {
+               Z = -affC3/affC[2];
+               X = ((affC[2]-romC[2])*Z - romC[1]*Y + affC3 - romC3)/romC[0];
+               Y = (-romC[0]*X - romC[2]*Z -romC3)/romC[1];
+           } else if (romC.block<2,1>(0,0).isZero(1e-6)) {
+               Z = -romC3/romC[2];
+               X = ((romC[2]-affC[2])*Z - affC[1]*Y + romC3 - affC3)/affC[0];
+               Y = (-affC[0]*X - affC[2]*Z -affC3)/affC[1];
+           }
+        } else {
+            Z = 0.0;
+            Y = ((affC[2]*romC[0] -romC[2]*affC[0])*Z +
+                affC3*romC[0] - romC3*affC[0])/ (romC[1]*affC[0] - affC[1]*romC[0]);
+            X = (-affC[1]*Y - affC[2]*Z - affC3)/ affC[0];
+        }
+        // point on intersecting line
+        Eigen::Vector3d p(X,Y,Z);
+        //std::cout << "a2r: " << a2r << std::endl << "r2a: " << r2a << std::endl;
+        //std::cout << "D: " << D << std::endl << "affC: " << affC
+        //    << std::endl << "romC: " << romC << std::endl
+        //<< "point on line: " << p << std::endl;
         
+       // Now find scalar interval along L that represents the intersection
+       // between affordance Triangle and L
+       Eigen::Vector3d projected;
+       Eigen::Vector3d dist;
+       projected[0] = (D.dot((aff.p1-p)));
+       dist[0] = a2r[0];
+       // rearrange points so that projected[1] is the point on the other side of the line
+       if (boost::math::sign (a2r[0]) == boost::math::sign(a2r[1])) {
+          projected[1] = (D.dot((aff.p3-p)));
+          projected[2] = (D.dot((aff.p2-p)));
+          dist[1] = a2r[2];
+          dist[2] = a2r[1];
+       } else {
+          projected[1] = (D.dot((aff.p2-p)));
+          projected[2] = (D.dot((aff.p3-p)));
+          dist[1] = a2r[1];
+          dist[2] = a2r[2];
+       }
+        
+        //std::cout << "projected 1, 2, 3: " << projected << std::endl;
 
+        Eigen::Vector2d afft;
+        afft[0] = projected[0] + (projected[1] -projected[0])*(dist[0])/(dist[0]-dist[1]);
+        afft[1] = projected[1] + (projected[2] -projected[1])*(dist[1])/(dist[1]-dist[2]);
+
+       // same for rom triangle:
+       projected.setZero();
+       dist.setZero();
+
+       // rearrange points so that projected[1] is the point on the other side of the line
+       if (boost::math::sign (r2a[0]) == boost::math::sign(r2a[1])) {
+          projected[0] = (D.dot((rom.p1-p)));
+          dist[0] = r2a[0];
+          projected[1] = (D.dot((rom.p3-p))); // different sign
+          projected[2] = (D.dot((rom.p2-p)));
+          dist[1] = r2a[2];
+          dist[2] = r2a[1];
+       } else if (boost::math::sign (r2a[0]) == boost::math::sign(r2a[2])) {
+          projected[0] = (D.dot((rom.p1-p)));
+          dist[0] = r2a[0];
+          projected[1] = (D.dot((rom.p2-p))); // different sign
+          projected[2] = (D.dot((rom.p3-p)));
+          dist[1] = r2a[1];
+          dist[2] = r2a[2];
+       } else {
+          projected[0] = (D.dot((rom.p2-p)));
+          dist[0] = r2a[1];
+          projected[1] = (D.dot((rom.p1-p))); // different sign
+          projected[2] = (D.dot((rom.p3-p)));
+          dist[1] = r2a[0];
+          dist[2] = r2a[2];
+       }
+       Eigen::Vector2d romt;
+       romt[0] = projected[0] + (projected[1] -projected[0])*(dist[0])/(dist[0]-dist[1]);
+       romt[1] = projected[1] + (projected[2] -projected[1])*(dist[1])/(dist[1]-dist[2]);
+       
+        //std::cout << "afft 1, 2 :" << afft << std::endl;
+        //std::cout << "romt 1, 2 :" << romt << std::endl;
+      
+        if ((std::min(afft[0], afft[1]) < std::max (romt[0], romt[1])) && 
+                (std::min (afft[0], afft[1]) > std::min (romt[0], romt[1])) ||
+                (std::min (romt[0], romt[1]) < std::max (afft[0], afft[1])) &&
+                (std::min (romt[0], romt[1]) > std::min (afft[0], afft[1]))) {
+            double t1 = std::max (std::min (afft[0], afft[1]), std::min (romt[0], romt[1]));
+            double t2 = std::min (std::max (afft[0], afft[1]), std::max (romt[0], romt[1]));
+            res.push_back(p + D*(t1));
+            if (refine != 0) {
+                double increment = (t2-t1)/double(refine);
+                for (unsigned int i = 1; i < refine; ++i) {
+                    res.push_back (p + D*(t1 + increment*i));
+                }    
+            }
+            res.push_back(p + D*(t2));
+        }
+        return res;
         }
 
         // custom funciton to get intersection points: not optimal time. Only to be used until
         // fcl::collision points start working
         std::vector<fcl::Vec3f> getIntersectionPointsCustom (const fcl::CollisionObjectPtr_t& rom,
-               const fcl::CollisionObjectPtr_t& affordance)
+               const fcl::CollisionObjectPtr_t& affordance, const unsigned int refine)
         {
           BVHModelOBConst_Ptr_t romModel (GetModel (rom));
           BVHModelOBConst_Ptr_t affModel (GetModel (affordance));
 //          std::vector<fcl::Vec3f> affVertices(affModel->vertices);
 //          std::vector<fcl::Triangle> affTriangles(affModel->triangles);
 //          std::vector<std::size_t> triIndices(affModel->);
-          
+          std::vector<fcl::Vec3f> res; 
           TrianglePoints tri;
           std::vector<TrianglePoints> affTris; // triangles in world frame
           std::vector<TrianglePoints> romTris;
@@ -370,18 +477,20 @@ namespace hpp {
 
               romTris.push_back (tri);
           }
-          std::cout << "tris in orig rom: " << romModel->num_tris << std::endl <<
-              "tris in reduced rom: " << romTris.size () << std::endl;
+         // std::cout << "tris in orig rom: " << romModel->num_tris << std::endl <<
+         //     "tris in reduced rom: " << romTris.size () << std::endl;
 
           for (unsigned int afftri = 0; afftri < affTris.size (); ++afftri) {
               for (unsigned int romtri = 0; romtri < romTris.size(); ++romtri) {
                   // check whether affTris[afftri] and romTris[romTri] intersect.
                   // If yes, find intersection line
-              
+                  std::vector<fcl::Vec3f> points = TriangleIntersection (romTris[romtri],
+                          affTris[afftri], refine);
+                  res.insert(res.end(), points.begin(), points.end());
               }
           
           }
-          return getIntersectionPoints (rom, affordance);
+          return res; //getIntersectionPoints (rom, affordance);
         }
 
         std::vector<fcl::Vec3f> getIntersectionPoints (const fcl::CollisionObjectPtr_t& rom,
