@@ -61,25 +61,24 @@ namespace hpp {
               Eigen::Matrix2d M;
               M << A, B/2.0, B/2.0, C;
         
-               Eigen::EigenSolver<Eigen::Matrix2d> es(M);
-               Eigen::EigenSolver<Eigen::Matrix2d>::EigenvalueType eval = es.eigenvalues ();
-               Eigen::Vector2d lambda;
+              Eigen::EigenSolver<Eigen::Matrix2d> es(M);
+              Eigen::EigenSolver<Eigen::Matrix2d>::EigenvalueType eval = es.eigenvalues ();
+              Eigen::Vector2d lambda;
 
-               // make sure eigenvalues are in order for the rest of the computations
-               if (fabs(eval(0).real () - A) > fabs(eval(0).real () - C)) {
-                  lambda << eval(1).real (), eval(0).real ();   
-               } else {
-                  lambda << eval(0).real (), eval(1).real ();
-               }
-               radii.push_back (sqrt (-M0.determinant ()/(M.determinant () * lambda(0))));
-               radii.push_back (sqrt (-M0.determinant ()/(M.determinant () * lambda(1))));
-               centroid << (B*E - 2*C*D)/(4*A*C - B*B), (B*D - 2*A*E)/(4*A*C - B*B);
-               tau = (M_PI/2.0 - atan((A-C)/B))/2.0;
-          } else // circle!
-          {
-           centroid << params(3)/(-2.0), params(4)/(-2.0);
-           radii.push_back (sqrt (centroid(0)*centroid(0) + centroid(1)*centroid(1) - params(5)));
-           tau = 0.0; 
+              // make sure eigenvalues are in order for the rest of the computations
+              if (fabs(eval(0).real () - A) > fabs(eval(0).real () - C)) {
+                 lambda << eval(1).real (), eval(0).real ();   
+              } else {
+                 lambda << eval(0).real (), eval(1).real ();
+              }
+              radii.push_back (sqrt (-M0.determinant ()/(M.determinant () * lambda(0))));
+              radii.push_back (sqrt (-M0.determinant ()/(M.determinant () * lambda(1))));
+              centroid << (B*E - 2*C*D)/(4*A*C - B*B), (B*D - 2*A*E)/(4*A*C - B*B);
+              tau = (M_PI/2.0 - atan((A-C)/B))/2.0;
+          } else { //circle!
+              centroid << params(3)/(-2.0), params(4)/(-2.0);
+              radii.push_back (sqrt (centroid(0)*centroid(0) + centroid(1)*centroid(1) - params(5)));
+              tau = 0.0; 
           }
           return radii;
         }
@@ -198,26 +197,29 @@ namespace hpp {
         /// \brief return normal of plane fitted to set of points.
         /// Also modifies the vector of points by replacing the points with those
         /// projected onto the fitted plane.
-        Eigen::VectorXd projectToPlane (std::vector<fcl::Vec3f> points)
+        Eigen::VectorXd projectToPlane (std::vector<fcl::Vec3f> points, Eigen::Vector3d& planeCentroid)
         {
           if (points.size () < 3) {
    					std::ostringstream oss
               ("projectToPlane: Too few input points to create plane.");
             throw std::runtime_error (oss.str ());
           }
-
+          
           const size_t nPoints = points.size ();
-          Eigen::MatrixXd A (nPoints,3);
+          Eigen::MatrixXd XYZ (nPoints,3);
+          Eigen::MatrixXd XYZ0 (nPoints,3);
           Eigen::VectorXd b (nPoints);
           // TODO: optimise
           for (unsigned int i = 0; i < nPoints; ++i) {
-              A (i,0) = points[i][0];
-              A (i,1) = points[i][1];
-              A (i,2) = 1.0;
-              b (i) = points[i][2];
+              XYZ (i,0) = points[i][0];
+              XYZ (i,1) = points[i][1];
+              XYZ (i,2) = points[i][2];
           }
-          // TODO: which decomposition to choose?
-          Eigen::VectorXd params (A.fullPivLu().solve(b));
+          Eigen::Vector3d cm (XYZ.block (0,0,nPoints,1).mean (), 
+                 XYZ.block (0,1,nPoints,1).mean (), XYZ.block (0,2,nPoints,1).mean ());
+          XYZ0 = XYZ - (Eigen::MatrixXd::Ones (nPoints,1) * cm.transpose ());
+          Eigen::JacobiSVD<Eigen::MatrixXd> svd(XYZ0, Eigen::ComputeThinU | Eigen::ComputeThinV);
+          Eigen::VectorXd params (svd.matrixV().col(svd.matrixV().cols() - 1));
 
           if (params.size () < 3) {
             std::ostringstream oss
@@ -226,20 +228,20 @@ namespace hpp {
           }
           Eigen::Vector3d normal (params(0), params(1), params(2));
           normal.normalize ();
-          // get origin of plane from z = C(0)*x + C(1)*y + C(2);
-          Eigen::Vector3d orig(0.0, 0.0, params(2));
+          // get origin of plane from P(0)*X + P(1)*Y + P(2)*Z - dot(P,cm) = 0
+          
+          planeCentroid = cm;
           Eigen::Matrix3d origin;
           origin.setZero ();
-          origin.diagonal () = orig;
-          Eigen::MatrixXd XYZ (nPoints,3);
-          XYZ << A.block(0,0,nPoints,2), b;
+          origin.diagonal () = planeCentroid;
 
           Eigen::MatrixXd distance (nPoints,3);
 
           distance = XYZ - (Eigen::MatrixXd::Ones (nPoints,3)*origin);//orig.array ().transpose ();
 
           // DEBUG:
-          // std::cout << "XYZ: "<< XYZ << std::endl << ", distance :" << distance << std::endl;
+          std::cout << "plane normal in world: "<< normal << std::endl;
+          //std::cout << "XYZ: "<< XYZ << std::endl << ", distance :" << distance << std::endl;
 
           // scalar distance from point to plane along the normal for all points in vector
           Eigen::VectorXd scalarDist (nPoints);
