@@ -424,12 +424,19 @@ namespace hpp {
         std::vector<fcl::Vec3f> getIntersectionPointsCustom (const fcl::CollisionObjectPtr_t& rom,
                const fcl::CollisionObjectPtr_t& affordance, const unsigned int refine)
         {
+          std::vector<fcl::Vec3f> res; 
+          CollisionPair_t col = CollisionPair_t (affordance, rom);
+          fcl::CollisionRequest req;
+          req.enable_contact = true;
+          fcl::CollisionResult result;
+          fcl::collide (col.first.get (), col.second.get (), req, result);
+          if (!result.isCollision ()) {
+              res.clear ();
+              return res;
+          }
           BVHModelOBConst_Ptr_t romModel (GetModel (rom));
           BVHModelOBConst_Ptr_t affModel (GetModel (affordance));
-//          std::vector<fcl::Vec3f> affVertices(affModel->vertices);
-//          std::vector<fcl::Triangle> affTriangles(affModel->triangles);
-//          std::vector<std::size_t> triIndices(affModel->);
-          std::vector<fcl::Vec3f> res; 
+
           TrianglePoints tri;
           std::vector<TrianglePoints> affTris; // triangles in world frame
           std::vector<TrianglePoints> romTris;
@@ -463,26 +470,91 @@ namespace hpp {
 
               affTris.push_back (tri);
           }
+          std::vector<TrianglePoints> rejected;
           for (unsigned int k = 0; k < romModel->num_tris; ++k) {
               fcl::Triangle fcltri = romModel->tri_indices[k];
               tri.p1 = rom->getRotation() * romModel->vertices[fcltri[0]] + rom->getTranslation();
               tri.p2 = rom->getRotation() * romModel->vertices[fcltri[1]] + rom->getTranslation();
               tri.p3 = rom->getRotation() * romModel->vertices[fcltri[2]] + rom->getTranslation();
+              rejected.push_back(tri); // save all tris for later TODO: bad name
               if ((maxX < std::min (std::min (tri.p1[0], tri.p2[0]), tri.p3[0])) ||
                  (minX > std::max (std::max (tri.p1[0], tri.p2[0]), tri.p3[0])) ||
                  (maxY < std::min (std::min (tri.p1[1], tri.p2[1]), tri.p3[1])) ||
                  (minY > std::max (std::max (tri.p1[1], tri.p2[1]), tri.p3[1])) ||
                  (maxZ < std::min (std::min (tri.p1[2], tri.p2[2]), tri.p3[2])) ||
                  (minZ > std::max (std::max (tri.p1[2], tri.p2[2]), tri.p3[2]))) {
-                  continue;
+                 continue;
               }
 
               romTris.push_back (tri);
           }
          // std::cout << "tris in orig rom: " << romModel->num_tris << std::endl <<
          //     "tris in reduced rom: " << romTris.size () << std::endl;
-
+          bool up, down, left, back, front, right = false;
+          std::vector<fcl::Vec3f> pointsWithin;
           for (unsigned int afftri = 0; afftri < affTris.size (); ++afftri) {
+                   // TODO: find a nicer way of looking for triangles all round afftri
+                   // -> want to know if some afftri points are withing the rom body
+                   // to include them as part of the intersection
+                   std::vector<fcl::Vec3f> affpoints;
+                   affpoints.push_back (affTris[afftri].p1);
+                   affpoints.push_back (affTris[afftri].p2);
+                   affpoints.push_back (affTris[afftri].p3);
+                   for (unsigned int i = 0; i < 3; ++i) {
+                       for (unsigned int rtri = 0; rtri < rejected.size (); ++rtri) {
+                         if (affpoints[i][0] < std::min (std::min (rejected[rtri].p1[0],
+                                    rejected[rtri].p2[0]),  rejected[rtri].p3[0])) {
+                            // one of the rom tri vertices above and one under
+                            if ((affpoints[i][2] <= std::max (std::max (rejected[rtri].p1[2], 
+                                    rejected[rtri].p2[2]), rejected[rtri].p3[2])) &&
+                                (affpoints[i][2] >= std::min (std::min (rejected[rtri].p1[2], 
+                                    rejected[rtri].p2[2]), rejected[rtri].p3[2])) &&
+                            (affpoints[i][1] <= std::max (std::max (rejected[rtri].p1[1], 
+                                    rejected[rtri].p2[1]), rejected[rtri].p3[1])) &&
+                            (affpoints[i][1] >= std::min (std::min (rejected[rtri].p1[1], 
+                                    rejected[rtri].p2[1]), rejected[rtri].p3[1]))) {
+                               front = true;
+                               std::cout << "front is true:" << affpoints[i] << std::endl;
+                            }
+                         }
+                         if (affpoints[i][0] > std::max (std::max (rejected[rtri].p1[0], 
+                                    rejected[rtri].p2[0]), rejected[rtri].p3[0])) {
+                            // one of the rom tri vertices above and one under
+                            if ((affpoints[i][2] <= std::max (std::max (rejected[rtri].p1[2], 
+                                    rejected[rtri].p2[2]), rejected[rtri].p3[2])) &&
+                                (affpoints[i][2] >= std::min (std::min (rejected[rtri].p1[2], 
+                                    rejected[rtri].p2[2]), rejected[rtri].p3[2])) &&
+                            (affpoints[i][1] <= std::max (std::max (rejected[rtri].p1[1], 
+                                    rejected[rtri].p2[1]), rejected[rtri].p3[1])) &&
+                            (affpoints[i][1] >= std::min (std::min (rejected[rtri].p1[1], 
+                                    rejected[rtri].p2[1]), rejected[rtri].p3[1]))) {
+                                back = true;
+                                std::cout << "back is true:" << affpoints[i] << std::endl;
+                            }
+                         }
+                     //    if (affpoints[i][1] < std::min (std::min (rejected[rtri].p1[1], 
+                     //               rejected[rtri].p2[1]), rejected[rtri].p3[1])) {
+                     //       left = true;
+                     //    }
+                     //    if (affpoints[i][1] > std::max (std::max (rejected[rtri].p1[1], 
+                     //               rejected[rtri].p2[1]), rejected[rtri].p3[1])) {
+                     //       right = true;
+                     //    }
+                     //    if (affpoints[i][2] < std::min (std::min (rejected[rtri].p1[2], 
+                     //               rejected[rtri].p2[2]), rejected[rtri].p3[2])) {
+                     //       up = true;
+                     //    }
+                     //    if (affpoints[i][2] > std::max (std::max (rejected[rtri].p1[2], 
+                     //               rejected[rtri].p2[2]), rejected[rtri].p3[2])) {
+                     //       down = true;
+                     //    }  
+                    }
+                    if (front && back) {
+                        std::cout << "found point that is encircled by rom triangles" << std::endl;
+                        pointsWithin.push_back(affpoints[i]);
+                    }
+                    front = false; back = false; //up = false; down = false; left = false, right = false;
+                  }
               for (unsigned int romtri = 0; romtri < romTris.size(); ++romtri) {
                   // check whether affTris[afftri] and romTris[romTri] intersect.
                   // If yes, find intersection line
@@ -491,6 +563,9 @@ namespace hpp {
                   res.insert(res.end(), points.begin(), points.end());
               }
           
+          }
+          if (res.size () != 0 || pointsWithin.size() > 2) {
+            res.insert(res.end(), pointsWithin.begin(), pointsWithin.end());
           }
           return res; //getIntersectionPoints (rom, affordance);
         }
