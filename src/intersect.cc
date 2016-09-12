@@ -348,19 +348,28 @@ namespace hpp {
        Eigen::Vector3d dist;
        projected[0] = (D.dot((aff.p1-p)));
        dist[0] = a2r[0];
-       // rearrange points so that projected[1] is the point on the other side of the line
        if (boost::math::sign (a2r[0]) == boost::math::sign(a2r[1])) {
-          projected[1] = (D.dot((aff.p3-p)));
+          projected[0] = (D.dot((aff.p1-p)));
+          dist[0] = a2r[0];
+          projected[1] = (D.dot((aff.p3-p))); // different sign
           projected[2] = (D.dot((aff.p2-p)));
           dist[1] = a2r[2];
           dist[2] = a2r[1];
-       } else {
-          projected[1] = (D.dot((aff.p2-p)));
+       } else if (boost::math::sign (a2r[0]) == boost::math::sign(a2r[2])) {
+          projected[0] = (D.dot((aff.p1-p)));
+          dist[0] = a2r[0];
+          projected[1] = (D.dot((aff.p2-p))); // different sign
           projected[2] = (D.dot((aff.p3-p)));
           dist[1] = a2r[1];
           dist[2] = a2r[2];
-       }
-        
+       } else {
+          projected[0] = (D.dot((aff.p2-p)));
+          dist[0] = a2r[1];
+          projected[1] = (D.dot((aff.p1-p))); // different sign
+          projected[2] = (D.dot((aff.p3-p)));
+          dist[1] = a2r[0];
+          dist[2] = a2r[2];
+       }        
         //std::cout << "projected 1, 2, 3: " << projected << std::endl;
 
         Eigen::Vector2d afft;
@@ -470,13 +479,13 @@ namespace hpp {
 
               affTris.push_back (tri);
           }
-          std::vector<TrianglePoints> rejected;
+          std::vector<TrianglePoints> allRomTris;
           for (unsigned int k = 0; k < romModel->num_tris; ++k) {
               fcl::Triangle fcltri = romModel->tri_indices[k];
               tri.p1 = rom->getRotation() * romModel->vertices[fcltri[0]] + rom->getTranslation();
               tri.p2 = rom->getRotation() * romModel->vertices[fcltri[1]] + rom->getTranslation();
               tri.p3 = rom->getRotation() * romModel->vertices[fcltri[2]] + rom->getTranslation();
-              rejected.push_back(tri); // save all tris for later TODO: bad name
+              allRomTris.push_back(tri); // save all tris for later 
               if ((maxX < std::min (std::min (tri.p1[0], tri.p2[0]), tri.p3[0])) ||
                  (minX > std::max (std::max (tri.p1[0], tri.p2[0]), tri.p3[0])) ||
                  (maxY < std::min (std::min (tri.p1[1], tri.p2[1]), tri.p3[1])) ||
@@ -486,7 +495,7 @@ namespace hpp {
                  continue;
               }
 
-              romTris.push_back (tri);
+              romTris.push_back (tri); // only save tris that could be in contact with aff
           }
          // std::cout << "tris in orig rom: " << romModel->num_tris << std::endl <<
          //     "tris in reduced rom: " << romTris.size () << std::endl;
@@ -494,58 +503,58 @@ namespace hpp {
           std::vector<fcl::Vec3f> pointsWithin;
           for (unsigned int afftri = 0; afftri < affTris.size (); ++afftri) {
                    // TODO: find a nicer way of looking for triangles all round afftri
-                   // -> want to know if some afftri points are withing the rom body
+                   // -> want to know if some afftri points are within the rom body
                    // to include them as part of the intersection
                    std::vector<fcl::Vec3f> affpoints;
                    affpoints.push_back (affTris[afftri].p1);
                    affpoints.push_back (affTris[afftri].p2);
                    affpoints.push_back (affTris[afftri].p3);
                    for (unsigned int i = 0; i < 3; ++i) {
-                       for (unsigned int rtri = 0; rtri < rejected.size (); ++rtri) {
-                         if (affpoints[i][0] < std::min (std::min (rejected[rtri].p1[0],
-                                    rejected[rtri].p2[0]),  rejected[rtri].p3[0])) {
+                       for (unsigned int rtri = 0; rtri < allRomTris.size (); ++rtri) {
+                         if (affpoints[i][0] < std::min (std::min (allRomTris[rtri].p1[0],
+                                    allRomTris[rtri].p2[0]),  allRomTris[rtri].p3[0])) {
                             // one of the rom tri vertices above and one under
-                            if ((affpoints[i][2] <= std::max (std::max (rejected[rtri].p1[2], 
-                                    rejected[rtri].p2[2]), rejected[rtri].p3[2])) &&
-                                (affpoints[i][2] >= std::min (std::min (rejected[rtri].p1[2], 
-                                    rejected[rtri].p2[2]), rejected[rtri].p3[2])) &&
-                            (affpoints[i][1] <= std::max (std::max (rejected[rtri].p1[1], 
-                                    rejected[rtri].p2[1]), rejected[rtri].p3[1])) &&
-                            (affpoints[i][1] >= std::min (std::min (rejected[rtri].p1[1], 
-                                    rejected[rtri].p2[1]), rejected[rtri].p3[1]))) {
+                            if ((affpoints[i][2] <= std::max (std::max (allRomTris[rtri].p1[2], 
+                                    allRomTris[rtri].p2[2]), allRomTris[rtri].p3[2])) &&
+                                (affpoints[i][2] >= std::min (std::min (allRomTris[rtri].p1[2], 
+                                    allRomTris[rtri].p2[2]), allRomTris[rtri].p3[2])) &&
+                            (affpoints[i][1] <= std::max (std::max (allRomTris[rtri].p1[1], 
+                                    allRomTris[rtri].p2[1]), allRomTris[rtri].p3[1])) &&
+                            (affpoints[i][1] >= std::min (std::min (allRomTris[rtri].p1[1], 
+                                    allRomTris[rtri].p2[1]), allRomTris[rtri].p3[1]))) {
                                front = true;
                                std::cout << "front is true:" << affpoints[i] << std::endl;
                             }
                          }
-                         if (affpoints[i][0] > std::max (std::max (rejected[rtri].p1[0], 
-                                    rejected[rtri].p2[0]), rejected[rtri].p3[0])) {
+                         if (affpoints[i][0] > std::max (std::max (allRomTris[rtri].p1[0], 
+                                    allRomTris[rtri].p2[0]), allRomTris[rtri].p3[0])) {
                             // one of the rom tri vertices above and one under
-                            if ((affpoints[i][2] <= std::max (std::max (rejected[rtri].p1[2], 
-                                    rejected[rtri].p2[2]), rejected[rtri].p3[2])) &&
-                                (affpoints[i][2] >= std::min (std::min (rejected[rtri].p1[2], 
-                                    rejected[rtri].p2[2]), rejected[rtri].p3[2])) &&
-                            (affpoints[i][1] <= std::max (std::max (rejected[rtri].p1[1], 
-                                    rejected[rtri].p2[1]), rejected[rtri].p3[1])) &&
-                            (affpoints[i][1] >= std::min (std::min (rejected[rtri].p1[1], 
-                                    rejected[rtri].p2[1]), rejected[rtri].p3[1]))) {
+                            if ((affpoints[i][2] <= std::max (std::max (allRomTris[rtri].p1[2], 
+                                    allRomTris[rtri].p2[2]), allRomTris[rtri].p3[2])) &&
+                                (affpoints[i][2] >= std::min (std::min (allRomTris[rtri].p1[2], 
+                                    allRomTris[rtri].p2[2]), allRomTris[rtri].p3[2])) &&
+                            (affpoints[i][1] <= std::max (std::max (allRomTris[rtri].p1[1], 
+                                    allRomTris[rtri].p2[1]), allRomTris[rtri].p3[1])) &&
+                            (affpoints[i][1] >= std::min (std::min (allRomTris[rtri].p1[1], 
+                                    allRomTris[rtri].p2[1]), allRomTris[rtri].p3[1]))) {
                                 back = true;
                                 std::cout << "back is true:" << affpoints[i] << std::endl;
                             }
                          }
-                     //    if (affpoints[i][1] < std::min (std::min (rejected[rtri].p1[1], 
-                     //               rejected[rtri].p2[1]), rejected[rtri].p3[1])) {
+                     //    if (affpoints[i][1] < std::min (std::min (allRomTris[rtri].p1[1], 
+                     //               allRomTris[rtri].p2[1]), allRomTris[rtri].p3[1])) {
                      //       left = true;
                      //    }
-                     //    if (affpoints[i][1] > std::max (std::max (rejected[rtri].p1[1], 
-                     //               rejected[rtri].p2[1]), rejected[rtri].p3[1])) {
+                     //    if (affpoints[i][1] > std::max (std::max (allRomTris[rtri].p1[1], 
+                     //               allRomTris[rtri].p2[1]), allRomTris[rtri].p3[1])) {
                      //       right = true;
                      //    }
-                     //    if (affpoints[i][2] < std::min (std::min (rejected[rtri].p1[2], 
-                     //               rejected[rtri].p2[2]), rejected[rtri].p3[2])) {
+                     //    if (affpoints[i][2] < std::min (std::min (allRomTris[rtri].p1[2], 
+                     //               allRomTris[rtri].p2[2]), allRomTris[rtri].p3[2])) {
                      //       up = true;
                      //    }
-                     //    if (affpoints[i][2] > std::max (std::max (rejected[rtri].p1[2], 
-                     //               rejected[rtri].p2[2]), rejected[rtri].p3[2])) {
+                     //    if (affpoints[i][2] > std::max (std::max (allRomTris[rtri].p1[2], 
+                     //               allRomTris[rtri].p2[2]), allRomTris[rtri].p3[2])) {
                      //       down = true;
                      //    }  
                     }
@@ -564,9 +573,18 @@ namespace hpp {
               }
           
           }
-          if (res.size () != 0 || pointsWithin.size() > 2) {
+          // at least one intersection point for romTri and aff object
+          if (res.size () != 0 && pointsWithin.size() > 0) {
             res.insert(res.end(), pointsWithin.begin(), pointsWithin.end());
           }
+         if (res.size () < 3 ) {
+            //ERROR
+         } else if (res.size () == 3) {
+            //too few points (triangle?) add more:
+            res.push_back((res[0] + res[1])/2.0);
+            res.push_back((res[1] + res[2])/2.0);
+            res.push_back((res[2] + res[0])/2.0);
+         }
           return res; //getIntersectionPoints (rom, affordance);
         }
 
