@@ -34,7 +34,7 @@ namespace hpp {
         Eigen::VectorXd directEllipse(const std::vector<fcl::Vec3f>& points);
         Eigen::VectorXd directCircle (const std::vector<fcl::Vec3f>& points);
 
-        Eigen::VectorXd projectToPlane (std::vector<fcl::Vec3f> points, Eigen::Vector3d& planeCentroid);
+        Eigen::Vector3d projectToPlane (std::vector<fcl::Vec3f> points, Eigen::Vector3d& planeCentroid);
 
         std::vector<fcl::Vec3f> getIntersectionPointsCustom (const fcl::CollisionObjectPtr_t& rom,
                const fcl::CollisionObjectPtr_t& affordance, const unsigned int refine=0);

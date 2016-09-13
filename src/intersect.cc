@@ -197,7 +197,7 @@ namespace hpp {
         /// \brief return normal of plane fitted to set of points.
         /// Also modifies the vector of points by replacing the points with those
         /// projected onto the fitted plane.
-        Eigen::VectorXd projectToPlane (std::vector<fcl::Vec3f> points, Eigen::Vector3d& planeCentroid)
+        Eigen::Vector3d projectToPlane (std::vector<fcl::Vec3f> points, Eigen::Vector3d& planeCentroid)
         {
           if (points.size () < 3) {
    					std::ostringstream oss
@@ -218,17 +218,24 @@ namespace hpp {
           Eigen::Vector3d cm (XYZ.block (0,0,nPoints,1).mean (), 
                  XYZ.block (0,1,nPoints,1).mean (), XYZ.block (0,2,nPoints,1).mean ());
           XYZ0 = XYZ - (Eigen::MatrixXd::Ones (nPoints,1) * cm.transpose ());
-          Eigen::JacobiSVD<Eigen::MatrixXd> svd(XYZ0, Eigen::ComputeThinU | Eigen::ComputeThinV);
-          Eigen::VectorXd params (svd.matrixV().col(svd.matrixV().cols() - 1));
 
-          if (params.size () < 3) {
-            std::ostringstream oss
-              ("projectToPlane: Wrong number of parameters for plane function!");
-            throw std::runtime_error (oss.str ());
+          Eigen::EigenSolver<Eigen::Matrix3d> es(XYZ0.transpose () * XYZ0);
+          Eigen::EigenSolver<Eigen::Matrix3d>::EigenvectorsType evecCplx = es.eigenvectors ();
+          Eigen::EigenSolver<Eigen::Matrix3d>::EigenvalueType eval = es.eigenvalues ();
+
+          // find index of smallest eigen vector: this is the index of the normal vector.
+          unsigned int index = 0;
+          Eigen::VectorXd eigval (eval.real ());
+          for(unsigned int i = 1; i < eigval.size (); ++i)
+          {
+              if(eigval (i) < eigval (index)) {
+                  index = i;
+              }
           }
-          Eigen::Vector3d normal (params(0), params(1), params(2));
+          Eigen::MatrixXd evec = evecCplx.real ();
+          Eigen::Vector3d normal = evec.block(0,index,3,1);
+
           normal.normalize ();
-          // get origin of plane from P(0)*X + P(1)*Y + P(2)*Z - dot(P,cm) = 0
           
           planeCentroid = cm;
           Eigen::Matrix3d origin;
@@ -256,7 +263,7 @@ namespace hpp {
             points[i][2] = projectecPoint (2);
           }
 
-          return params;
+          return normal;
         }
 
         BVHModelOBConst_Ptr_t GetModel (const fcl::CollisionObjectConstPtr_t& object)
@@ -499,7 +506,7 @@ namespace hpp {
           }
          // std::cout << "tris in orig rom: " << romModel->num_tris << std::endl <<
          //     "tris in reduced rom: " << romTris.size () << std::endl;
-          bool up, down, left, back, front, right = false;
+          bool back, front= false; //up, down, left,  right = false;
           std::vector<fcl::Vec3f> pointsWithin;
           for (unsigned int afftri = 0; afftri < affTris.size (); ++afftri) {
                    // TODO: find a nicer way of looking for triangles all round afftri
