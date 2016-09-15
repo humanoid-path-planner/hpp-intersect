@@ -24,10 +24,21 @@
 
 namespace hpp {
     namespace intersect {
-    // free functions ?i
     
     /// \addtogroup intersect
     /// \{
+        
+        struct Inequality
+        {
+          Inequality(const Eigen::MatrixXd& A, const Eigen::VectorXd& b,
+                   const Eigen::MatrixXd& N, const Eigen::MatrixXd& V):
+                   A_(A), b_(b), N_(N), V_(V) {}
+          Eigen::MatrixXd A_;
+          Eigen::VectorXd b_;
+          Eigen::MatrixXd N_;
+          Eigen::MatrixXd V_;
+        };
+
         std::vector<double> getRadius (const Eigen::VectorXd& params,
                 Eigen::Vector2d& centroid, double& tau);
 
@@ -35,6 +46,8 @@ namespace hpp {
         Eigen::VectorXd directCircle (const std::vector<fcl::Vec3f>& points);
 
         Eigen::Vector3d projectToPlane (std::vector<fcl::Vec3f> points, Eigen::Vector3d& planeCentroid);
+
+        Inequality fcl2inequalities (const fcl::CollisionObjectPtr_t& rom);
 
         std::vector<fcl::Vec3f> getIntersectionPointsCustom (const fcl::CollisionObjectPtr_t& rom,
                const fcl::CollisionObjectPtr_t& affordance, const unsigned int refine=0);

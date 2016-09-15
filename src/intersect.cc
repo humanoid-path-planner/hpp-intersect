@@ -435,6 +435,45 @@ namespace hpp {
         return res;
         }
 
+        Inequality fcl2inequalities (const fcl::CollisionObjectPtr_t& rom)
+        {
+          BVHModelOBConst_Ptr_t romModel (GetModel (rom));
+          Eigen::MatrixXd A(romModel->num_tris, 3);
+          Eigen::VectorXd b(romModel->num_tris);
+          Eigen::MatrixXd N(romModel->num_tris, 3);
+          Eigen::MatrixXd V = Eigen::MatrixXd::Ones(romModel->num_tris, 4);
+
+          TrianglePoints tri; // to save world position of vertices in matrix form
+          Eigen::Matrix3d vertexNormals; // vertex normals are equal to triangle normal in this case
+          for (unsigned int k = 0; k < romModel->num_tris; ++k) {
+              fcl::Triangle fcltri = romModel->tri_indices[k]; 
+              tri.p1 = rom->getRotation() * romModel->vertices[fcltri[0]] + rom->getTranslation(),
+              tri.p1 = rom->getRotation() * romModel->vertices[fcltri[1]] + rom->getTranslation(),
+              tri.p1 = rom->getRotation() * romModel->vertices[fcltri[2]] + rom->getTranslation();
+              Eigen::Vector3d normal = (tri.p2 - tri.p1).cross (tri.p3 - tri.p1);
+
+              A.block(k,0, 1,3) = normal.transpose ();
+              b(k) = normal.dot (tri.p1);
+              V.block(k,0, 1,3) = (Eigen::Vector3d (tri.p1)).transpose ();
+              N.block(k,0, 1,3) = normal.transpose ();
+          }
+
+          Inequality ineq (A,b,N,V);
+          return ineq;
+        }
+
+        bool is_inside (const Inequality& ineq, const Eigen::Vector3d point)
+        {
+          // TODO: more efficient way of testing the inequality? No loops.
+          Eigen::VectorXd eq = ineq.A_ * point - ineq.b_;
+          for (unsigned int k = 0; k <eq.size (); ++k) {
+            if (eq(k) > 0.0) {
+              return false;
+            }
+          }
+          return true;
+        }
+
         // custom funciton to get intersection points: not optimal time. Only to be used until
         // fcl::collision points start working
         std::vector<fcl::Vec3f> getIntersectionPointsCustom (const fcl::CollisionObjectPtr_t& rom,
@@ -486,13 +525,13 @@ namespace hpp {
 
               affTris.push_back (tri);
           }
-          std::vector<TrianglePoints> allRomTris;
+          //std::vector<TrianglePoints> allRomTris;
           for (unsigned int k = 0; k < romModel->num_tris; ++k) {
               fcl::Triangle fcltri = romModel->tri_indices[k];
               tri.p1 = rom->getRotation() * romModel->vertices[fcltri[0]] + rom->getTranslation();
               tri.p2 = rom->getRotation() * romModel->vertices[fcltri[1]] + rom->getTranslation();
               tri.p3 = rom->getRotation() * romModel->vertices[fcltri[2]] + rom->getTranslation();
-              allRomTris.push_back(tri); // save all tris for later 
+          //    allRomTris.push_back(tri); // save all tris for later 
               if ((maxX < std::min (std::min (tri.p1[0], tri.p2[0]), tri.p3[0])) ||
                  (minX > std::max (std::max (tri.p1[0], tri.p2[0]), tri.p3[0])) ||
                  (maxY < std::min (std::min (tri.p1[1], tri.p2[1]), tri.p3[1])) ||
@@ -506,71 +545,7 @@ namespace hpp {
           }
          // std::cout << "tris in orig rom: " << romModel->num_tris << std::endl <<
          //     "tris in reduced rom: " << romTris.size () << std::endl;
-          bool back, front= false; //up, down, left,  right = false;
-          std::vector<fcl::Vec3f> pointsWithin;
           for (unsigned int afftri = 0; afftri < affTris.size (); ++afftri) {
-                   // TODO: find a nicer way of looking for triangles all round afftri
-                   // -> want to know if some afftri points are within the rom body
-                   // to include them as part of the intersection
-                   std::vector<fcl::Vec3f> affpoints;
-                   affpoints.push_back (affTris[afftri].p1);
-                   affpoints.push_back (affTris[afftri].p2);
-                   affpoints.push_back (affTris[afftri].p3);
-                   for (unsigned int i = 0; i < 3; ++i) {
-                       for (unsigned int rtri = 0; rtri < allRomTris.size (); ++rtri) {
-                         if (affpoints[i][0] < std::min (std::min (allRomTris[rtri].p1[0],
-                                    allRomTris[rtri].p2[0]),  allRomTris[rtri].p3[0])) {
-                            // one of the rom tri vertices above and one under
-                            if ((affpoints[i][2] <= std::max (std::max (allRomTris[rtri].p1[2], 
-                                    allRomTris[rtri].p2[2]), allRomTris[rtri].p3[2])) &&
-                                (affpoints[i][2] >= std::min (std::min (allRomTris[rtri].p1[2], 
-                                    allRomTris[rtri].p2[2]), allRomTris[rtri].p3[2])) &&
-                            (affpoints[i][1] <= std::max (std::max (allRomTris[rtri].p1[1], 
-                                    allRomTris[rtri].p2[1]), allRomTris[rtri].p3[1])) &&
-                            (affpoints[i][1] >= std::min (std::min (allRomTris[rtri].p1[1], 
-                                    allRomTris[rtri].p2[1]), allRomTris[rtri].p3[1]))) {
-                               front = true;
-                               std::cout << "front is true:" << affpoints[i] << std::endl;
-                            }
-                         }
-                         if (affpoints[i][0] > std::max (std::max (allRomTris[rtri].p1[0], 
-                                    allRomTris[rtri].p2[0]), allRomTris[rtri].p3[0])) {
-                            // one of the rom tri vertices above and one under
-                            if ((affpoints[i][2] <= std::max (std::max (allRomTris[rtri].p1[2], 
-                                    allRomTris[rtri].p2[2]), allRomTris[rtri].p3[2])) &&
-                                (affpoints[i][2] >= std::min (std::min (allRomTris[rtri].p1[2], 
-                                    allRomTris[rtri].p2[2]), allRomTris[rtri].p3[2])) &&
-                            (affpoints[i][1] <= std::max (std::max (allRomTris[rtri].p1[1], 
-                                    allRomTris[rtri].p2[1]), allRomTris[rtri].p3[1])) &&
-                            (affpoints[i][1] >= std::min (std::min (allRomTris[rtri].p1[1], 
-                                    allRomTris[rtri].p2[1]), allRomTris[rtri].p3[1]))) {
-                                back = true;
-                                std::cout << "back is true:" << affpoints[i] << std::endl;
-                            }
-                         }
-                     //    if (affpoints[i][1] < std::min (std::min (allRomTris[rtri].p1[1], 
-                     //               allRomTris[rtri].p2[1]), allRomTris[rtri].p3[1])) {
-                     //       left = true;
-                     //    }
-                     //    if (affpoints[i][1] > std::max (std::max (allRomTris[rtri].p1[1], 
-                     //               allRomTris[rtri].p2[1]), allRomTris[rtri].p3[1])) {
-                     //       right = true;
-                     //    }
-                     //    if (affpoints[i][2] < std::min (std::min (allRomTris[rtri].p1[2], 
-                     //               allRomTris[rtri].p2[2]), allRomTris[rtri].p3[2])) {
-                     //       up = true;
-                     //    }
-                     //    if (affpoints[i][2] > std::max (std::max (allRomTris[rtri].p1[2], 
-                     //               allRomTris[rtri].p2[2]), allRomTris[rtri].p3[2])) {
-                     //       down = true;
-                     //    }  
-                    }
-                    if (front && back) {
-                        std::cout << "found point that is encircled by rom triangles" << std::endl;
-                        pointsWithin.push_back(affpoints[i]);
-                    }
-                    front = false; back = false; //up = false; down = false; left = false, right = false;
-                  }
               for (unsigned int romtri = 0; romtri < romTris.size(); ++romtri) {
                   // check whether affTris[afftri] and romTris[romTri] intersect.
                   // If yes, find intersection line
@@ -578,14 +553,11 @@ namespace hpp {
                           affTris[afftri], refine);
                   res.insert(res.end(), points.begin(), points.end());
               }
-          
           }
-          // at least one intersection point for romTri and aff object
-          if (res.size () != 0 && pointsWithin.size() > 0) {
-            res.insert(res.end(), pointsWithin.begin(), pointsWithin.end());
-          }
+// TODO: after finding points, create convex hull and refine!!
          if (res.size () < 3 ) {
             //ERROR
+             std::cout << "intersect::getIntersectionPointsCustom: too few intersection points!" << std::endl; 
          } else if (res.size () == 3) {
             //too few points (triangle?) add more:
             res.push_back((res[0] + res[1])/2.0);
