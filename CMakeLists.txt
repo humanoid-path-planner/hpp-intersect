@@ -19,6 +19,10 @@
 
 CMAKE_MINIMUM_REQUIRED(VERSION 2.6)
 
+if ( UNIX )  
+       set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -std=gnu++0x")
+endif ()
+
 SET(CXX_DISABLE_WERROR TRUE)
 INCLUDE(cmake/base.cmake)
 INCLUDE(cmake/boost.cmake)
@@ -54,7 +58,8 @@ endif (fcl_FOUND)
 SET(${PROJECT_NAME}_HEADERS
   include/hpp/intersect/fwd.hh
   include/hpp/intersect/intersect.hh
- )
+  include/hpp/intersect/geom/algorithms.h
+  )
 
 # Declare dependencies
 SEARCH_FOR_BOOST()

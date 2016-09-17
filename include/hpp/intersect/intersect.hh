@@ -42,17 +42,17 @@ namespace hpp {
         std::vector<double> getRadius (const Eigen::VectorXd& params,
                 Eigen::Vector2d& centroid, double& tau);
 
-        Eigen::VectorXd directEllipse(const std::vector<fcl::Vec3f>& points);
-        Eigen::VectorXd directCircle (const std::vector<fcl::Vec3f>& points);
+        Eigen::VectorXd directEllipse(const std::vector<Eigen::Vector3d>& points);
+        Eigen::VectorXd directCircle (const std::vector<Eigen::Vector3d>& points);
 
-        Eigen::Vector3d projectToPlane (std::vector<fcl::Vec3f> points, Eigen::Vector3d& planeCentroid);
+        Eigen::Vector3d projectToPlane (std::vector<Eigen::Vector3d> points, Eigen::Vector3d& planeCentroid);
 
         Inequality fcl2inequalities (const fcl::CollisionObjectPtr_t& rom);
 
-        std::vector<fcl::Vec3f> getIntersectionPointsCustom (const fcl::CollisionObjectPtr_t& rom,
+        std::vector<Eigen::Vector3d> getIntersectionPointsCustom (const fcl::CollisionObjectPtr_t& rom,
                const fcl::CollisionObjectPtr_t& affordance, const unsigned int refine=0);
 
-        std::vector<fcl::Vec3f> getIntersectionPoints (const fcl::CollisionObjectPtr_t& rom,
+        std::vector<Eigen::Vector3d> getIntersectionPoints (const fcl::CollisionObjectPtr_t& rom,
                const fcl::CollisionObjectPtr_t& affordance);
 
     /// \}
