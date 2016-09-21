@@ -41,6 +41,7 @@ namespace hpp {
         {
           // if number of parameters == 5 -->assume it's a circle ?
           // if number == 6 --> ellipse
+          std::vector<double> res;
           bool ellipse = true;
           if (params.size () < 6) {
               std::ostringstream oss
@@ -61,7 +62,6 @@ namespace hpp {
               M0 << F, D/2.0, E/2.0, D/2.0, A, B/2.0, E/2.0, B/2.0, C;
               Eigen::Matrix2d M;
               M << A, B/2.0, B/2.0, C;
-        
               Eigen::EigenSolver<Eigen::Matrix2d> es(M);
               Eigen::EigenSolver<Eigen::Matrix2d>::EigenvalueType eval = es.eigenvalues ();
               Eigen::Vector2d lambda;
@@ -74,14 +74,21 @@ namespace hpp {
               }
               radii.push_back (sqrt (-M0.determinant ()/(M.determinant () * lambda(0))));
               radii.push_back (sqrt (-M0.determinant ()/(M.determinant () * lambda(1))));
+              res = radii;
               centroid << (B*E - 2*C*D)/(4*A*C - B*B), (B*D - 2*A*E)/(4*A*C - B*B);
-              tau = (M_PI/2.0 - atan((A-C)/B))/2.0;
+              tau = (atan(B/(A-C)))/2.0;
+              // tau is always the rotation angle when the longer radius lies along the X axis
+              // in the original (tau == 0) position
+              if (radii[0] < radii[1]) {
+                  tau = tau - M_PI/2.0;
+              }
+             
           } else { //circle!
               centroid << params(3)/(-2.0), params(4)/(-2.0);
-              radii.push_back (sqrt (centroid(0)*centroid(0) + centroid(1)*centroid(1) - params(5)));
+              res.push_back (sqrt (centroid(0)*centroid(0) + centroid(1)*centroid(1) - params(5)));
               tau = 0.0; 
           }
-          return radii;
+          return res;
         }
 
         /// \brief fit ellipse to a set of points. 2D implementation.
@@ -159,8 +166,6 @@ namespace hpp {
               A(1,0) * centroid(0) * centroid(1) - A(3,0) * centroid(0) - A(4,0) * centroid(1);
 
           A(3,0) = A3;  A(4,0) = A4;  A(5,0) = A5;
-          //A(3,0) = A3/2.0;  A(4,0) = A4/2.0;  A(5,0) = A5;
-          //A(1,0) = A(1,0)/2.0;
           A = A/A.norm ();
 
           return A.block<6,1>(0,0);
@@ -245,11 +250,8 @@ namespace hpp {
 
           Eigen::MatrixXd distance (nPoints,3);
 
-          distance = XYZ - (Eigen::MatrixXd::Ones (nPoints,3)*origin);//orig.array ().transpose ();
+          distance = XYZ - (Eigen::MatrixXd::Ones (nPoints,3)*origin);
 
-          // DEBUG:
-          std::cout << "plane normal in world: "<< normal << std::endl;
-          //std::cout << "XYZ: "<< XYZ << std::endl << ", distance :" << distance << std::endl;
 
           // scalar distance from point to plane along the normal for all points in vector
           Eigen::VectorXd scalarDist (nPoints);
@@ -277,8 +279,7 @@ namespace hpp {
         }
 
         // A Fast Triangle-Triangle Intersection Test by Tomas Möller
-        std::vector<Eigen::Vector3d> TriangleIntersection (const TrianglePoints& rom, const TrianglePoints& aff,
-                const unsigned int refine=0)
+        std::vector<Eigen::Vector3d> TriangleIntersection (const TrianglePoints& rom, const TrianglePoints& aff)
         {
          //plane equation C(0)x + C(1)y + C(2)z + C3 = 0
          Eigen::Vector3d romC;
@@ -319,7 +320,8 @@ namespace hpp {
          }
 
         // if we get this far, triangles intersect or are coplanar
-        if (r2a.isZero (1e-4)) {
+        if (r2a.isZero (1e-6)) {
+            // TODO: 2D convex hull
             // deal with coplanar triangles and return?
         }
         // The intersection of aff and rom planes is a line L = p +tD,
@@ -332,26 +334,36 @@ namespace hpp {
         if (fabs (D[2]) < 1e-6) {
            if (affC.block<2,1>(0,0).isZero(1e-6)) {
                Z = -affC3/affC[2];
+               Y = 0.0; // take Y as 0 arbitrarily
                X = ((affC[2]-romC[2])*Z - romC[1]*Y + affC3 - romC3)/romC[0];
-               Y = (-romC[0]*X - romC[2]*Z -romC3)/romC[1];
            } else if (romC.block<2,1>(0,0).isZero(1e-6)) {
                Z = -romC3/romC[2];
+               Y = 0.0;
                X = ((romC[2]-affC[2])*Z - affC[1]*Y + romC3 - affC3)/affC[0];
-               Y = (-affC[0]*X - affC[2]*Z -affC3)/affC[1];
+           } else if (fabs (affC[1]) < 1e-6 && fabs (romC[1]) < 1e-6) { // D only in Y-direction
+              Y = 0.0;
+              X = (romC3 -affC3*(romC[2]/affC[2]))/(affC[0]*(romC[2]/affC[2]) -romC[0]);
+              Z = (-affC[0]*X -affC3)/affC[2];
+           } else {  // D only in X
+              X = 0.0;
+              Y = (romC3 -affC3*(romC[2]/affC[2]))/(affC[1]*(romC[2]/affC[2]) -romC[1]);
+              Z = (-affC[1]*Y -affC3)/affC[2];
            }
         } else {
             Z = 0.0;
-            Y = ((affC[2]*romC[0] -romC[2]*affC[0])*Z +
-                affC3*romC[0] - romC3*affC[0])/ (romC[1]*affC[0] - affC[1]*romC[0]);
-            X = (-affC[1]*Y - affC[2]*Z - affC3)/ affC[0];
+            if (fabs (affC[0]) < 1e-6) {
+                X = ((affC[2]*romC[1] -romC[2]*affC[1])*Z +
+                  affC3*romC[1] - romC3*affC[1])/ (romC[0]*affC[1] - affC[0]*romC[1]);
+                Y = (-affC[0]*X -affC[2]*Z -affC3)/affC[1];
+            } else {
+                Y = ((affC[2]*romC[0] -romC[2]*affC[0])*Z +
+                  affC3*romC[0] - romC3*affC[0])/ (romC[1]*affC[0] - affC[1]*romC[0]);
+                X = (-affC[1]*Y - affC[2]*Z - affC3)/ affC[0];
+            }
         }
         // point on intersecting line
         Eigen::Vector3d p(X,Y,Z);
-        //std::cout << "a2r: " << a2r << std::endl << "r2a: " << r2a << std::endl;
-        //std::cout << "D: " << D << std::endl << "affC: " << affC
-        //    << std::endl << "romC: " << romC << std::endl
-        //<< "point on line: " << p << std::endl;
-        
+ 
        // Now find scalar interval along L that represents the intersection
        // between affordance Triangle and L
        Eigen::Vector3d projected;
@@ -380,7 +392,6 @@ namespace hpp {
           dist[1] = a2r[0];
           dist[2] = a2r[2];
        }        
-        //std::cout << "projected 1, 2, 3: " << projected << std::endl;
 
         Eigen::Vector2d afft;
         afft[0] = projected[0] + (projected[1] -projected[0])*(dist[0])/(dist[0]-dist[1]);
@@ -417,9 +428,6 @@ namespace hpp {
        romt[0] = projected[0] + (projected[1] -projected[0])*(dist[0])/(dist[0]-dist[1]);
        romt[1] = projected[1] + (projected[2] -projected[1])*(dist[1])/(dist[1]-dist[2]);
        
-        //std::cout << "afft 1, 2 :" << afft << std::endl;
-        //std::cout << "romt 1, 2 :" << romt << std::endl;
-      
         if ((std::min(afft[0], afft[1]) < std::max (romt[0], romt[1])) && 
                 (std::min (afft[0], afft[1]) > std::min (romt[0], romt[1])) ||
                 (std::min (romt[0], romt[1]) < std::max (afft[0], afft[1])) &&
@@ -427,12 +435,6 @@ namespace hpp {
             double t1 = std::max (std::min (afft[0], afft[1]), std::min (romt[0], romt[1]));
             double t2 = std::min (std::max (afft[0], afft[1]), std::max (romt[0], romt[1]));
             res.push_back(p + D*(t1));
-            if (refine != 0) {
-                double increment = (t2-t1)/double(refine);
-                for (unsigned int i = 1; i < refine; ++i) {
-                    res.push_back (p + D*(t1 + increment*i));
-                }    
-            }
             res.push_back(p + D*(t2));
         }
         return res;
@@ -477,21 +479,12 @@ namespace hpp {
           return true;
         }
 
-        // custom funciton to get intersection points: not optimal time. Only to be used until
-        // fcl::collision points start working
-        std::vector<Eigen::Vector3d> getIntersectionPointsCustom (const fcl::CollisionObjectPtr_t& rom,
-               const fcl::CollisionObjectPtr_t& affordance, const unsigned int refine)
+        // custom funciton to get intersection points: not optimal time. 
+        std::vector<Eigen::Vector3d> getIntersectionPoints (const fcl::CollisionObjectPtr_t& rom,
+               const fcl::CollisionObjectPtr_t& affordance)
         {
-          std::vector<Eigen::Vector3d> res; 
-          CollisionPair_t col = CollisionPair_t (affordance, rom);
-          fcl::CollisionRequest req;
-          req.enable_contact = true;
-          fcl::CollisionResult result;
-          fcl::collide (col.first.get (), col.second.get (), req, result);
-          if (!result.isCollision ()) {
-              res.clear ();
-              return res;
-          }
+          std::vector<Eigen::Vector3d> res;
+          res.clear ();
           BVHModelOBConst_Ptr_t romModel (GetModel (rom));
           BVHModelOBConst_Ptr_t affModel (GetModel (affordance));
 
@@ -499,94 +492,63 @@ namespace hpp {
           std::vector<TrianglePoints> affTris; // triangles in world frame
           std::vector<TrianglePoints> romTris;
           
-          double maxX, maxY, maxZ = std::numeric_limits<double>::min();
-          double minX, minY, minZ = std::numeric_limits<double>::max();
-          std::cout << "afftris = [";
           for (unsigned int k = 0; k < affModel->num_tris; ++k) {
               fcl::Triangle fcltri = affModel->tri_indices[k];
               tri.p1 = affordance->getRotation() * affModel->vertices[fcltri[0]] + affordance->getTranslation();
               tri.p2 = affordance->getRotation() * affModel->vertices[fcltri[1]] + affordance->getTranslation();
               tri.p3 = affordance->getRotation() * affModel->vertices[fcltri[2]] + affordance->getTranslation();
-              std::cout << (Eigen::Vector3d (tri.p1)).transpose() << ";" << std::endl
-                  << (Eigen::Vector3d (tri.p2)).transpose() << ";" << std::endl
-                  << (Eigen::Vector3d (tri.p3)).transpose() << ";" << std::endl;
-
-              if (maxX < std::max (std::max (tri.p1[0], tri.p2[0]), tri.p3[0])) {
-                  maxX = std::max (std::max (tri.p1[0], tri.p2[0]), tri.p3[0]);
-              }
-              if (maxY < std::max (std::max (tri.p1[1], tri.p2[1]), tri.p3[1])) {
-                  maxY = std::max (std::max (tri.p1[1], tri.p2[1]), tri.p3[1]);
-              }
-              if (maxZ < std::max (std::max (tri.p1[2], tri.p2[2]), tri.p3[2])) {
-                  maxZ = std::max (std::max (tri.p1[2], tri.p2[2]), tri.p3[2]);
-              }
-              if (minX > std::min (std::min (tri.p1[0], tri.p2[0]), tri.p3[0])) {
-                  minX = std::min (std::min (tri.p1[0], tri.p2[0]), tri.p3[0]);
-              }
-              if (minY > std::min (std::min (tri.p1[1], tri.p2[1]), tri.p3[1])) {
-                  minY = std::min (std::min (tri.p1[1], tri.p2[1]), tri.p3[1]);
-              }
-              if (minZ > std::min (std::min (tri.p1[2], tri.p2[2]), tri.p3[2])) {
-                  minZ = std::min (std::min (tri.p1[2], tri.p2[2]), tri.p3[2]);
-              }
-
 
               affTris.push_back (tri);
           }
-          std::cout << "];"<< std::endl;
-          std::cout << "affpose" << affordance->getRotation() <<affordance->getTranslation() << std::endl;
-          //std::vector<TrianglePoints> allRomTris;
-          std::cout << "romtris = [";
           for (unsigned int k = 0; k < romModel->num_tris; ++k) {
               fcl::Triangle fcltri = romModel->tri_indices[k];
               tri.p1 = rom->getRotation() * romModel->vertices[fcltri[0]] + rom->getTranslation();
               tri.p2 = rom->getRotation() * romModel->vertices[fcltri[1]] + rom->getTranslation();
               tri.p3 = rom->getRotation() * romModel->vertices[fcltri[2]] + rom->getTranslation();
-              std::cout << (Eigen::Vector3d (tri.p1)).transpose() << ";" << std::endl
-                  << (Eigen::Vector3d (tri.p2)).transpose() << ";" << std::endl
-                  << (Eigen::Vector3d (tri.p3)).transpose() << ";" << std::endl;
-          //    allRomTris.push_back(tri); // save all tris for later 
-      //        if ((maxX < std::min (std::min (tri.p1[0], tri.p2[0]), tri.p3[0])) ||
-      //           (minX > std::max (std::max (tri.p1[0], tri.p2[0]), tri.p3[0])) ||
-      //           (maxY < std::min (std::min (tri.p1[1], tri.p2[1]), tri.p3[1])) ||
-      //           (minY > std::max (std::max (tri.p1[1], tri.p2[1]), tri.p3[1])) ||
-      //           (maxZ < std::min (std::min (tri.p1[2], tri.p2[2]), tri.p3[2])) ||
-      //           (minZ > std::max (std::max (tri.p1[2], tri.p2[2]), tri.p3[2]))) {
-      //           continue;
-      //        }
 
               romTris.push_back (tri); // only save tris that could be in contact with aff
           }
-         // std::cout << "tris in orig rom: " << romModel->num_tris << std::endl <<
-         //     "tris in reduced rom: " << romTris.size () << std::endl;
-          std::cout << "];"<< std::endl;
-          std::cout << "rompose" << rom->getRotation() << rom->getTranslation() << std::endl;
           Inequality ineq = fcl2inequalities (rom);
           for (unsigned int afftri = 0; afftri < affTris.size (); ++afftri) {
-              // TODO: thereare a lot of cases where internal points are found but are not the end points of aff
-              // --> these should not be added
+              // there are a lot of cases where internal points are found but are not the end points of aff
+              // --> these are eliminated by taking the convex hull of found points.
               if (is_inside (ineq, affTris[afftri].p1)) {
                   res.push_back(Eigen::Vector3d(affTris[afftri].p1));
-                  std::cout << "p1 within" << std::endl;}                
+                  }                
               if (is_inside (ineq, affTris[afftri].p2)) {
                   res.push_back(Eigen::Vector3d(affTris[afftri].p2));
-                  std::cout << "p2 within" << std::endl;}
+                  }
               if (is_inside (ineq, affTris[afftri].p3)) {
                   res.push_back(Eigen::Vector3d(affTris[afftri].p3));
-                  std::cout << "p3 within" << std::endl;}
+                  }
+          }
+          // Check collision only after finding internal aff vertices: if the whole of aff
+          // is within the ROM body, no collision will be found but the whole aff area is in fact available
+          // for contact planning.
+          CollisionPair_t col = CollisionPair_t (affordance, rom);
+          fcl::CollisionRequest req;
+          req.enable_contact = true;
+          fcl::CollisionResult result;
+          fcl::collide (col.first.get (), col.second.get (), req, result);
+          if (!result.isCollision () && res.size () == 0) {
+              std::cout << "ROM and affordance object not in collision!" << std::endl;
+              res.clear ();
+              return res;
+          }
+
+          for (unsigned int afftri = 0; afftri < affTris.size (); ++afftri) {
               for (unsigned int romtri = 0; romtri < romTris.size(); ++romtri) {
                   // check whether affTris[afftri] and romTris[romTri] intersect.
                   // If yes, find intersection line
                   std::vector<Eigen::Vector3d> points = TriangleIntersection (romTris[romtri],
-                          affTris[afftri], refine);
+                          affTris[afftri]);
                   res.insert(res.end(), points.begin(), points.end());
               }
           }
-// TODO: after finding points, create convex hull and refine!!
+         // After finding points, create convex hull and refine to get more points for ellipse approximation
          std::vector<Eigen::Vector3d> hull = geom::convexHull<std::vector<Eigen::Vector3d> >(res.begin(), res.end());
          if (hull.size () > 2) {
-     //       hullRefined.push_back (hull[0]); //add first element -> necessary?
-            double minDist = 0.1; //10 cm minimum interval TODO: hardcoded or user given value?
+            double minDist = 0.1; //10 cm minimum interval TODO: hard-coded or user-given value?
             for (unsigned int k = 0; k < hull.size () -1; ++k) {
                      if (minDist > (hull[k+1] - hull[k]).norm () && (hull[k+1] - hull[k]).norm () > 0.01) {
                   minDist = (hull[k+1] - hull[k]).norm ();
@@ -594,32 +556,17 @@ namespace hpp {
             }
             std::vector<Eigen::Vector3d> hullRefined;
             for (unsigned int j = 0; j < hull.size () -1; ++j) {
-                double intervals = std::floor (((hull[j+1] - hull[j]).norm ())/minDist);
+                double intervals = std::ceil (((hull[j+1] - hull[j]).norm ())/minDist);
                 for (unsigned int i = 0; i < (unsigned int) intervals; ++i) {
                     hullRefined.push_back (hull[j] + (i+1)*(hull[j+1]-hull[j])/intervals);
             }
          }
          res = hullRefined;
-         for (unsigned int k = 0; k < hull.size (); ++k) {
-                std::cout << "hull points: " << Eigen::Vector3d(hull[k]).transpose() << std::endl;
-          }
-          for (unsigned int k = 0; k < hullRefined.size (); ++k) {
-                std::cout << "refined hull points: " << Eigen::Vector3d(hullRefined[k]).transpose() << std::endl;
-          }
          }
-       //  if (res.size () < 3 ) {
-       //     //ERROR
-       //      std::cout << "intersect::getIntersectionPointsCustom: too few intersection points!" << std::endl; 
-       //  } else if (res.size () == 3) {
-            //too few points (triangle?) add more:
-       //     res.push_back((res[0] + res[1])/2.0);
-       //     res.push_back((res[1] + res[2])/2.0);
-       //     res.push_back((res[2] + res[0])/2.0);
-       //  }
-          return res; //getIntersectionPoints (rom, affordance);
+          return res; 
         }
 
-        std::vector<Eigen::Vector3d> getIntersectionPoints (const fcl::CollisionObjectPtr_t& rom,
+        std::vector<Eigen::Vector3d> getIntersectionPointsOld (const fcl::CollisionObjectPtr_t& rom,
                const fcl::CollisionObjectPtr_t& affordance)
         {
             CollisionPair_t col = CollisionPair_t (affordance, rom);
@@ -631,9 +578,6 @@ namespace hpp {
             // std::size_t collision TODO: should the return value of collision (...) be stored?
             fcl::collide (col.first.get (), col.second.get (), req, res);
           
-            //std::cout << "rom trafo: " << rom->getRotation() << rom->getTranslation() << std::endl;
-            //std::cout << "aff trafo: " << affordance->getRotation() << affordance->getTranslation() << std::endl;
-
             if (!res.isCollision ()) {
               // should not happen
               // TODO: make sure only affordance objects in contact are used to avoid this
@@ -647,10 +591,6 @@ namespace hpp {
                 intersectPoints.push_back(res.getContact (i).pos);
             }
             
-            //debug
-            //for (unsigned int i = 0; i < intersectPoints.size (); ++i) {
-            //  std::cout << intersectPoints[i] << std::endl;
-            //}
             return intersectPoints;
         }
 

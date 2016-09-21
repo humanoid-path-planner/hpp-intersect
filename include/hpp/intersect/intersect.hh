@@ -49,10 +49,10 @@ namespace hpp {
 
         Inequality fcl2inequalities (const fcl::CollisionObjectPtr_t& rom);
 
-        std::vector<Eigen::Vector3d> getIntersectionPointsCustom (const fcl::CollisionObjectPtr_t& rom,
-               const fcl::CollisionObjectPtr_t& affordance, const unsigned int refine=0);
-
         std::vector<Eigen::Vector3d> getIntersectionPoints (const fcl::CollisionObjectPtr_t& rom,
+               const fcl::CollisionObjectPtr_t& affordance);
+
+        std::vector<Eigen::Vector3d> getIntersectionPointsOld (const fcl::CollisionObjectPtr_t& rom,
                const fcl::CollisionObjectPtr_t& affordance);
 
     /// \}
