@@ -49,6 +49,8 @@ namespace hpp {
 
         Inequality fcl2inequalities (const fcl::CollisionObjectPtr_t& rom);
 
+        bool is_inside (const Inequality& ineq, const Eigen::Vector3d point);
+
         std::vector<Eigen::Vector3d> getIntersectionPoints (const fcl::CollisionObjectPtr_t& rom,
                const fcl::CollisionObjectPtr_t& affordance);
 
