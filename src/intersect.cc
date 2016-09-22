@@ -26,16 +26,12 @@
 namespace hpp {
     namespace intersect {
 
-
+        // helper class to save triangle vertex positions in world frame
         struct TrianglePoints
         {   
             fcl::Vec3f p1, p2, p3; 
         };
 
-        /// \brief get major and minor radius of ellipse or raduíus of sphere from given
-        /// vector of parameters of the conic function. function modifies parameters centroid
-        /// and tau to give centroid of shape and (for ellipses) the rotation angle
-        /// within the plane of the shape in radians.
         std::vector<double> getRadius (const Eigen::VectorXd& params,
                 Eigen::Vector2d& centroid, double& tau)
         {
@@ -91,12 +87,6 @@ namespace hpp {
           return res;
         }
 
-        /// \brief fit ellipse to a set of points. 2D implementation.
-        /// Direct ellipse fit, proposed in article "Direct Least Squares Fitting of Ellipses"
-        /// by A. W. Fitzgibbon, M. Pilu, R. B. Fisher in IEEE Trans. PAMI, Vol. 21, pages 476-480 (1999)
-        /// This code is based on the Matlab function DirectEllipseFit by Nikolai Chernov.
-        /// It returns ellipses only, even if points are better approximated by a hyperbola.
-        /// It is somewhat biased toward smaller ellipses.
         Eigen::VectorXd directEllipse(const std::vector<Eigen::Vector3d>& points)
         {
           const size_t nPoints = points.size ();
@@ -152,7 +142,7 @@ namespace hpp {
           }
           if (A0.size () < 3) {
               std::ostringstream oss
-              ("directEllipse: Could not create ellipse approximation. Maybe try circle instead?");
+              ("intersect::directEllipse: Could not create ellipse approximation. Maybe try circle instead?");
             throw std::runtime_error (oss.str ());
           }
           // A1.rows () + T.rows () should always be equal to 6!!
@@ -199,10 +189,7 @@ namespace hpp {
           return params;
 
         }
-
-        /// \brief return normal of plane fitted to set of points.
-        /// Also modifies the vector of points by replacing the points with those
-        /// projected onto the fitted plane.
+        
         Eigen::Vector3d projectToPlane (std::vector<Eigen::Vector3d> points, Eigen::Vector3d& planeCentroid)
         {
           if (points.size () < 3) {
@@ -269,6 +256,8 @@ namespace hpp {
           return normal;
         }
 
+        // Helper function to get the underlying model of fcl::CollisionObject. Allows
+        // access to mesh triangles and their vertices.
         BVHModelOBConst_Ptr_t GetModel (const fcl::CollisionObjectConstPtr_t& object)
         {   
             assert (object->collisionGeometry ()->getNodeType () == fcl::BV_OBBRSS);
@@ -565,38 +554,6 @@ namespace hpp {
          }
           return res; 
         }
-
-        std::vector<Eigen::Vector3d> getIntersectionPointsOld (const fcl::CollisionObjectPtr_t& rom,
-               const fcl::CollisionObjectPtr_t& affordance)
-        {
-            CollisionPair_t col = CollisionPair_t (affordance, rom);
-            fcl::CollisionRequest req;
-            req.num_max_contacts = 100;
-            req.enable_contact = true;
-            fcl::CollisionResult res;
-            std::vector<Eigen::Vector3d> intersectPoints; intersectPoints.clear ();
-            // std::size_t collision TODO: should the return value of collision (...) be stored?
-            fcl::collide (col.first.get (), col.second.get (), req, res);
-          
-            if (!res.isCollision ()) {
-              // should not happen
-              // TODO: make sure only affordance objects in contact are used to avoid this
-              // throw std::runtime_error ("Affordance object is out of reach of ROM!!");
-                std::cout << "WARNING: Affordance object is out of reach of ROM!! No intersection found."
-                    << std::endl;
-                return intersectPoints; 
-            }
-
-            for (unsigned int i = 0; i < res.numContacts (); ++i) {
-                intersectPoints.push_back(res.getContact (i).pos);
-            }
-            
-            return intersectPoints;
-        }
-
-
-
-
 
     } // namespace intersect
 } // namespace hpp

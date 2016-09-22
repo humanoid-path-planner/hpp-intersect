@@ -27,7 +27,8 @@ namespace hpp {
     
     /// \addtogroup intersect
     /// \{
-        
+       
+        /// helper class for stacked inequalities.
         struct Inequality
         {
           Inequality(const Eigen::MatrixXd& A, const Eigen::VectorXd& b,
@@ -39,22 +40,59 @@ namespace hpp {
           Eigen::MatrixXd V_;
         };
 
+        /// Compute radius and rotation of an elliptic or circular shape
+        /// from given vector of parameters of the conic function.
+        /// Rotation \param tau is given for an ellipse as the angle of its
+        /// major axis from the positive X-axis. Rotation for circles is by default zero.
+        /// Also the centroid of the shape is computed.
+        /// \param params vector of parameters of the conic function defining a shape
+        /// \param centroid the 2d-centroid of the elliptic or circular shape
+        /// \param tau the rotation angle of the shape within the plane, in radians.
         std::vector<double> getRadius (const Eigen::VectorXd& params,
                 Eigen::Vector2d& centroid, double& tau);
 
+        /// \brief Fit ellipse to a set of points. 2D implementation.
+        /// Assumes all points are in a plane with its normal along the Z-axis.
+        /// Direct ellipse fit, proposed in article "Direct Least Squares Fitting of Ellipses"
+        /// by A. W. Fitzgibbon, M. Pilu, R. B. Fisher in IEEE Trans. PAMI, Vol. 21, pages 476-480 (1999)
+        /// This code is based on the Matlab function DirectEllipseFit by Nikolai Chernov.
+        /// It returns ellipses only, even if points are better approximated by a hyperbola.
+        /// It is somewhat biased toward smaller ellipses.
+        /// \param points set of points in a plane to be approximated.
         Eigen::VectorXd directEllipse(const std::vector<Eigen::Vector3d>& points);
+
+        /// \brief Simple direct method for circle approximation based on a set of points
+        /// in a plane. Assumes the plane normal points along the Z-axis.
+        /// \param points set of points in a plane to be approximated.
         Eigen::VectorXd directCircle (const std::vector<Eigen::Vector3d>& points);
 
+        /// \brief return normal of plane fitted to set of points.
+        /// Modifies the vector of points by replacing the original points with those
+        /// projected onto the fitted plane. Also returns the centroid of the plane.
+        /// \param points set of points used for plane fitting.
+        /// \param planeCentroid centroid of the plane after fitting.
         Eigen::Vector3d projectToPlane (std::vector<Eigen::Vector3d> points, Eigen::Vector3d& planeCentroid);
 
+        /// Create a set of inequalities based on a fcl::CollisionObject. The
+        /// returned matrices may be used to find out whether a point is within
+        /// the collision object. Returns the inequality matrices as one object (intersect::Inequality).
+        /// \param rom fcl:CollisionObject that will be used to create inequalities.
         Inequality fcl2inequalities (const fcl::CollisionObjectPtr_t& rom);
 
+        /// Return true if a point is inside a set of planes described by intersect::Inequality.
+        /// \param ineq object comprising the planes that form inequalities.
+        /// \param point point to be tested against the inequalities.
         bool is_inside (const Inequality& ineq, const Eigen::Vector3d point);
 
+        /// Get contact points resulting from collision between two fcl::CollisionObjects.
+        /// Uses the fcl::collision function to verify collision but for the contact point
+        /// computation, a self-implemented triangle-intersection algorithm based on that of
+        /// Tomas Möller is used. This function returns a vector of 3D points that form a convex
+        /// hull around all computed contact points. Triangle vertices of affordance object within
+        /// the rom object are also considered contact points if they form part of the convex hull.
+        /// \param rom fcl::CollisionObject that presents the reachability of a robot limb.
+        /// \param affordance fcl::CollisionObject presenting the contact surface in collision with a limb.
         std::vector<Eigen::Vector3d> getIntersectionPoints (const fcl::CollisionObjectPtr_t& rom,
-               const fcl::CollisionObjectPtr_t& affordance);
-
-        std::vector<Eigen::Vector3d> getIntersectionPointsOld (const fcl::CollisionObjectPtr_t& rom,
                const fcl::CollisionObjectPtr_t& affordance);
 
     /// \}
